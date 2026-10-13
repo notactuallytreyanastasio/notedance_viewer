@@ -143,6 +143,15 @@ defmodule Dave.NFM.MusicXML do
 
   defp direction_xml(_score, _measure, _part_index), do: []
 
+  defp note_xml(%Note{measure_rest: true} = note) do
+    {"note", [],
+     [
+       {"rest", [{"measure", "yes"}], []},
+       {"duration", [], [Integer.to_string(duration!(note))]},
+       {"voice", [], [Integer.to_string(note.voice)]}
+     ]}
+  end
+
   defp note_xml(%Note{} = note) do
     attrs = if(note.color, do: [{"color", note.color}], else: [])
 
@@ -151,12 +160,39 @@ defmodule Dave.NFM.MusicXML do
         if(note.chord, do: {"chord", [], []}),
         note_body(note),
         {"duration", [], [Integer.to_string(duration!(note))]},
+        if(note.tie_stop, do: {"tie", [{"type", "stop"}], []}),
+        if(note.tied, do: {"tie", [{"type", "start"}], []}),
         {"voice", [], [Integer.to_string(note.voice)]}
       ]
       |> Enum.reject(&is_nil/1)
       |> Kernel.++(note_type_xml(note))
+      |> Kernel.++(if(note.dotted, do: [{"dot", [], []}], else: []))
+      |> Kernel.++(tied_notations(note))
+      |> Kernel.++(lyric_xml(note))
 
     {"note", attrs, children}
+  end
+
+  defp tied_notations(%Note{tied: false, tie_stop: false}), do: []
+
+  defp tied_notations(note) do
+    [
+      {"notations", [],
+       Enum.reject(
+         [
+           if(note.tie_stop, do: {"tied", [{"type", "stop"}], []}),
+           if(note.tied, do: {"tied", [{"type", "start"}], []})
+         ],
+         &is_nil/1
+       )}
+    ]
+  end
+
+  defp lyric_xml(%Note{lyric: nil}), do: []
+
+  defp lyric_xml(%Note{lyric: lyric}) do
+    attrs = [{"number", "1"}] ++ if(lyric.color, do: [{"color", lyric.color}], else: [])
+    [{"lyric", attrs, [{"syllabic", [], ["single"]}, {"text", [], [escape(lyric.text)]}]}]
   end
 
   defp note_body(%Note{pitch: nil}), do: {"rest", [], []}
@@ -176,10 +212,7 @@ defmodule Dave.NFM.MusicXML do
     [{"type", [], [Atom.to_string(type)]}]
   end
 
-  defp duration!(%Note{value: value}) do
-    {_type, beats} = Dave.NFM.note_value(value)
-    round(@divisions * beats)
-  end
+  defp duration!(%Note{} = note), do: round(@divisions * Dave.NFM.beats(note))
 
   defp escape(s) do
     s

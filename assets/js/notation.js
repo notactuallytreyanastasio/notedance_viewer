@@ -15,6 +15,9 @@ export async function drawScore(el, url, zoom) {
     disableCursor: false,
     followCursor: false,
     cursorsOptions: [{ type: 0, color: FOLLOW_LINE, alpha: 0.6, follow: false }],
+    // NFMXML's <beam/> is an empty marker nothing explains, so the reader
+    // drops it and OSMD groups eighths and sixteenths by beat itself
+    autoBeam: true,
     zoom,
   })
   await osmd.load(musicxml)
@@ -44,7 +47,11 @@ export async function drawScore(el, url, zoom) {
 // timestamp across every staff). After reset() the cursor is already ON
 // the first onset, so the walk starts at 0, not before it; starting at -1
 // put the line on the second note at time zero.
-export function noteTracker(osmd, onsets) {
+export function noteTracker(osmd, allOnsets) {
+  // One stop per distinct time: a chord is several notes at one onset, and
+  // the cursor stops there once. Mandalorian's xylophone part is all
+  // octave chords; counted per note, its cursor ran ahead at twice speed.
+  const onsets = distinctByMs(allOnsets)
   let idx = 0 // onsets[idx] is the first onset still in the future
   let at = 0 // the onset the cursor is on
 
@@ -66,6 +73,11 @@ export function noteTracker(osmd, onsets) {
   }
 
   return { seekTo }
+}
+
+function distinctByMs(onsets) {
+  const seen = new Set()
+  return onsets.filter((o) => (seen.has(o.ms) ? false : (seen.add(o.ms), true)))
 }
 
 // Every distinct onset across all parts, sorted: the TV's walk order.

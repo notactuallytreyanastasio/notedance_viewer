@@ -2,10 +2,15 @@ defmodule Dave.NFMTest do
   use ExUnit.Case, async: true
 
   alias Dave.NFM
-  alias Dave.NFM.{Fetch, MusicXML, Parser}
+  alias Dave.NFM.{Fetch, MusicXML, Parser, Timeline}
 
   @compressed File.read!("test/support/fixtures/mary_had_a_little_lamb.compressed.xml")
   @nfmxml File.read!("test/support/fixtures/mary_had_a_little_lamb.nfmxml")
+  # Dave's first two real scores, the ones that stopped the reader on
+  # 2026-10-13: letter-name lyrics, eighths, sixteenths, dots, ties, and
+  # twelve empty measures for the bells.
+  @mandalorian File.read!("test/support/fixtures/mandalorian.nfmxml")
+  @baby_shark File.read!("test/support/fixtures/baby_shark.nfmxml")
 
   # The score the fixtures were taken from, fetched live while developing:
   # Burlington Public Schools, "Mary Had a Little Lamb - Xylophone",
@@ -88,11 +93,88 @@ defmodule Dave.NFMTest do
     assert [%{value: 7.0, pitch: %{step: "B", octave: 4}}, %{value: 7.0, pitch: nil}] = notes
   end
 
-  test "note_value: observed enum only, raises on the unobserved" do
+  test "note_value: the ladder 4..8, raises on the unobserved" do
+    assert NFM.note_value(4.0) == {:"16th", 0.25}
+    assert NFM.note_value(5.0) == {:eighth, 0.5}
     assert NFM.note_value(6.0) == {:quarter, 1.0}
     assert NFM.note_value(7.0) == {:half, 2.0}
+    assert NFM.note_value(8.0) == {:whole, 4.0}
 
-    assert_raise ArgumentError, ~r/TODO.*8\.0/, fn -> NFM.note_value(8.0) end
+    assert_raise ArgumentError, ~r/TODO.*3\.0/, fn -> NFM.note_value(3.0) end
+  end
+
+  test "every real score's measures add up: onsets equal the running sum of lengths" do
+    # the parser raises otherwise, so parsing is the assertion
+    for xml <- [@nfmxml, @mandalorian, @baby_shark] do
+      score = Parser.parse(xml)
+      timeline = Timeline.build(score)
+      measures = length(hd(score.parts).measures)
+
+      last =
+        timeline["parts"]
+        |> Map.values()
+        |> Enum.flat_map(& &1["notes"])
+        |> Enum.map(& &1["end"])
+        |> Enum.max()
+
+      # measure_ms is rounded once; the onsets are rounded per note
+      assert_in_delta last, 60_000 / score.bpm * 4 * measures, measures
+    end
+  end
+
+  test "baby shark: eighths and wholes, ties across the barline" do
+    score = Parser.parse(@baby_shark)
+    assert score.bpm == 120.0
+    notes = for p <- score.parts, m <- p.measures, n <- m.notes, do: n
+
+    assert Enum.count(notes, &(&1.value == 5.0)) == 36
+    assert Enum.count(notes, &(&1.value == 8.0)) == 3
+    assert Enum.count(notes, & &1.tied) == 9
+    assert Enum.count(notes, & &1.tie_stop) == 9
+
+    musicxml = MusicXML.to_music_xml(score)
+    assert musicxml =~ "<type>eighth</type>"
+    assert musicxml =~ "<type>whole</type>"
+    assert musicxml =~ ~s|<tie type="start"/>|
+    assert musicxml =~ ~s|<notations><tied type="stop"/></notations>|
+    assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
+  end
+
+  test "mandalorian: letter lyrics, dotted eighths and sixteenths, bells resting whole measures" do
+    score = Parser.parse(@mandalorian)
+    [bells | _] = score.parts
+    notes = for p <- score.parts, m <- p.measures, n <- m.notes, do: n
+
+    assert Enum.count(bells.measures, &match?([%{measure_rest: true}], &1.notes)) == 7
+    assert Enum.count(notes, & &1.measure_rest) == 12
+    assert Enum.count(notes, & &1.dotted) == 11
+    assert Enum.count(notes, &(&1.value == 4.0)) == 26
+
+    lyric = notes |> Enum.find(& &1.lyric) |> Map.fetch!(:lyric)
+    assert lyric == %{text: "C", color: "#33BB33"}
+    # a dotted eighth is 0.75 beats; a 16th 0.25
+    assert Enum.find(notes, &(&1.dotted and &1.value == 5.0)).beats == 0.75
+
+    musicxml = MusicXML.to_music_xml(score, [0])
+    assert musicxml =~ ~s|<rest measure="yes"/><duration>192</duration>|
+    assert musicxml =~ "<type>16th</type>"
+    assert musicxml =~ "<type>eighth</type><dot/>"
+
+    assert musicxml =~
+             ~s|<lyric number="1" color="#33BB33"><syllabic>single</syllabic><text>E</text></lyric>|
+
+    refute musicxml =~ "#0x"
+    assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
+  end
+
+  test "a note that is not where the previous one ended is refused, not drawn short" do
+    # take Mary's first measure and push the second note late
+    broken =
+      String.replace(@nfmxml, "<position>64</position>", "<position>96</position>", global: false)
+
+    assert_raise ArgumentError, ~r/TODO: measure 1 note at position 96/, fn ->
+      Parser.parse(broken)
+    end
   end
 
   test "musicxml: full score is well-formed and lists all parts" do

@@ -33,7 +33,7 @@ defmodule Dave.NFM.Timeline do
         notes =
           for m <- part.measures, n <- m.notes do
             onset = m.index * measure_ms + n.position / NFM.quarter_position() * ms_per_quarter
-            {_type, beats} = NFM.note_value(n.value)
+            beats = NFM.beats(n)
 
             %{
               "ms" => round(onset),

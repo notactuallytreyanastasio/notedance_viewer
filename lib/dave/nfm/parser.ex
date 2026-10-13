@@ -3,9 +3,15 @@ defmodule Dave.NFM.Parser do
   NFMXML (Noteflight native XML) into `Dave.NFM` structs.
 
   Strict on purpose: anything the parser has not met on a real classroom
-  score (ties, tempo changes, unknown noteSet children) raises with the
-  offending node, per house style — a crash is a work item, a silent
-  misparse is a hidden bug.
+  score (tempo changes, unknown noteSet children, a note whose position
+  is not where the previous note ended) raises with the offending node,
+  per house style — a crash is a work item, a silent misparse is a hidden
+  bug.
+
+  `<beam/>` is accepted and dropped: it is an empty marker whose meaning
+  (start? member?) nothing confirms, and OSMD beams eighths itself with
+  autoBeam. Second voices are refused until a score has one; the MusicXML
+  writer has no <backup>.
   """
 
   alias Dave.NFM
@@ -19,8 +25,8 @@ defmodule Dave.NFM.Parser do
     "natural" => 0
   }
 
-  @known_noteset_children ~w(value position color note)
-  @known_note_children ~w(pitch step noteHead accidental)
+  @known_noteset_children ~w(value position color note beam dotted lyric)
+  @known_note_children ~w(pitch step noteHead accidental tied)
 
   def parse(xml) do
     {:ok, doc} = Saxy.SimpleForm.parse_string(xml)
@@ -32,10 +38,12 @@ defmodule Dave.NFM.Parser do
     {fifths, mode} = key_signature!(children)
     {tempo_value, bpm} = tempo!(children)
 
+    measure_beats = beats * 4 / beat_type
+
     parts =
       children
       |> all("part")
-      |> with_index(&parse_part/2)
+      |> with_index(&parse_part(&1, &2, measure_beats))
 
     %Score{
       title: text!(doc, "title"),
@@ -118,13 +126,14 @@ defmodule Dave.NFM.Parser do
     end
   end
 
-  defp parse_part({"part", _, children}, index) do
+  defp parse_part({"part", _, children}, index, measure_beats) do
     staves = all(children, "staff")
 
     measures =
       staves
       |> Enum.flat_map(&all(&1, "measure"))
-      |> with_index(&parse_measure/2)
+      |> with_index(&parse_measure(&1, &2, measure_beats))
+      |> resolve_ties()
 
     %Part{
       nfm_id: text(children, "id") || "part-#{index}",
@@ -135,26 +144,119 @@ defmodule Dave.NFM.Parser do
     }
   end
 
-  defp parse_measure({"measure", _, children}, index) do
+  defp parse_measure({"measure", _, children}, index, measure_beats) do
     clef =
       case attributes_clef(children) do
         nil -> nil
         c -> %{sign: text!(c, "sign"), line: text_to_int!(c, "line")}
       end
 
-    notes =
+    voices =
       children
       |> one("voices")
       |> kids()
       |> all("voice")
       |> with_index(fn {"voice", _, voice_children}, voice ->
-        voice_children
-        |> all("noteSet")
-        |> Enum.flat_map(&parse_note_set(&1, voice + 1))
-      end)
-      |> List.flatten()
+        case all(voice_children, "noteSet") do
+          [] ->
+            [measure_rest(voice + 1, measure_beats)]
 
-    %Measure{index: index, clef: clef, notes: notes}
+          sets ->
+            sets
+            |> Enum.flat_map(&parse_note_set(&1, voice + 1))
+            |> check_positions!(index, measure_beats)
+        end
+      end)
+
+    case voices do
+      [notes] ->
+        %Measure{index: index, clef: clef, notes: notes}
+
+      [notes | rest] ->
+        if Enum.all?(rest, &match?([%Note{measure_rest: true}], &1)),
+          do: %Measure{index: index, clef: clef, notes: notes},
+          else:
+            raise(
+              ArgumentError,
+              "TODO: measure #{index + 1} has #{length(voices)} voices with notes; " <>
+                "the MusicXML writer has no <backup> yet"
+            )
+    end
+  end
+
+  # A <tied/> note ties to the next note of its pitch in the voice, across
+  # the barline. Mark that note so the writer can close the tie; a tie left
+  # open at the end of the part is a misread and raises.
+  defp resolve_ties(measures) do
+    {measures, open} =
+      Enum.map_reduce(measures, MapSet.new(), fn measure, open ->
+        {notes, open} =
+          Enum.map_reduce(measure.notes, open, fn note, open ->
+            key = note.pitch
+            stop = key != nil and MapSet.member?(open, key)
+            open = if stop, do: MapSet.delete(open, key), else: open
+            open = if note.tied, do: MapSet.put(open, key), else: open
+            {%{note | tie_stop: stop}, open}
+          end)
+
+        {%{measure | notes: notes}, open}
+      end)
+
+    if MapSet.size(open) > 0 do
+      raise(ArgumentError, "TODO: tie never lands: #{inspect(MapSet.to_list(open))}")
+    end
+
+    measures
+  end
+
+  defp measure_rest(voice, measure_beats) do
+    %Note{
+      voice: voice,
+      value: nil,
+      position: 0,
+      pitch: nil,
+      color: nil,
+      chord: false,
+      measure_rest: true,
+      beats: measure_beats
+    }
+  end
+
+  # Every onset must be where the previous note ended. True on all three
+  # real scores; a gap would mean an implicit rest NFMXML never writes, and
+  # we would rather stop than draw a measure short.
+  defp check_positions!(notes, index, measure_beats) do
+    unit = NFM.quarter_position()
+
+    {_cursor, notes} =
+      Enum.reduce(notes, {0, []}, fn note, {cursor, acc} ->
+        cond do
+          note.chord ->
+            {cursor, [note | acc]}
+
+          note.position != cursor ->
+            raise(
+              ArgumentError,
+              "TODO: measure #{index + 1} note at position #{note.position}, " <>
+                "previous note ended at #{cursor} (implicit rest?) in #{inspect(note)}"
+            )
+
+          true ->
+            {cursor + round(note.beats * unit), [note | acc]}
+        end
+      end)
+
+    notes = Enum.reverse(notes)
+    last_end = List.last(notes) |> then(&(&1.position + round(&1.beats * unit)))
+
+    if last_end != round(measure_beats * unit) do
+      raise(
+        ArgumentError,
+        "TODO: measure #{index + 1} ends at #{last_end}, expected #{round(measure_beats * unit)}"
+      )
+    end
+
+    notes
   end
 
   defp attributes_clef(children) do
@@ -175,37 +277,61 @@ defmodule Dave.NFM.Parser do
         s -> String.to_integer(s)
       end
 
-    color = text(children, "color")
+    color = color(text(children, "color"))
+    dotted = one(children, "dotted") != nil
+    lyric = parse_lyric(one(children, "lyric"))
 
-    note_children = all(children, "note")
+    base = %Note{
+      voice: voice,
+      value: value,
+      position: position,
+      pitch: nil,
+      color: color,
+      chord: false,
+      dotted: dotted,
+      lyric: lyric
+    }
 
-    case note_children do
+    base = %{base | beats: NFM.beats(base)}
+
+    case all(children, "note") do
       [] ->
-        [
-          %Note{
-            voice: voice,
-            value: value,
-            position: position,
-            pitch: nil,
-            color: color,
-            chord: false
-          }
-        ]
+        [base]
 
       note_children ->
         note_children
-        |> with_index(fn n, i ->
-          %Note{
-            voice: voice,
-            value: value,
-            position: position,
-            pitch: parse_pitch(n),
-            color: color,
-            chord: i > 0
+        |> with_index(fn {"note", _, nc} = n, i ->
+          # the lyric sits under the chord once, on its first note
+          %{
+            base
+            | pitch: parse_pitch(n),
+              chord: i > 0,
+              tied: one(nc, "tied") != nil,
+              lyric: if(i == 0, do: lyric, else: nil)
           }
         end)
     end
   end
+
+  # <lyric><text>C</text><color>#0x33BB33</color></lyric>; the text can be
+  # empty (Dave leaves a lyric slot on rests), which is no lyric at all.
+  defp parse_lyric(nil), do: nil
+
+  defp parse_lyric({"lyric", _, children} = node) do
+    assert_known_children!(node, children, ~w(text color))
+
+    case text(children, "text") do
+      nil -> nil
+      "" -> nil
+      t -> %{text: t, color: color(text(children, "color"))}
+    end
+  end
+
+  # Noteflight writes colors two ways on real scores: "#ff0000" and
+  # "#0x33BB33". Only the first is a color to a browser.
+  defp color(nil), do: nil
+  defp color("#0x" <> hex), do: "#" <> hex
+  defp color(c), do: c
 
   defp parse_pitch({"note", _, children} = node) do
     assert_known_children!(node, children, @known_note_children)
