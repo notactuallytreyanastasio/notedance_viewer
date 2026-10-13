@@ -1,0 +1,7 @@
+defmodule DaveWeb.PageController do
+  use DaveWeb, :controller
+
+  def home(conn, _params) do
+    render(conn, :home)
+  end
+end
