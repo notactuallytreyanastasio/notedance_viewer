@@ -18,6 +18,13 @@ defmodule DaveWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    post "/import", ImportController, :create
+
+    get "/s/:noteflight_id", ScoreController, :play
+    get "/s/:noteflight_id/master", ScoreController, :master
+    get "/s/:noteflight_id/musicxml", ScoreController, :musicxml
+    get "/s/:noteflight_id/musicxml/:part", ScoreController, :musicxml
+    get "/s/:noteflight_id/timeline", ScoreController, :timeline
   end
 
   # Other scopes may use custom stacks.

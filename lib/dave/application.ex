@@ -12,6 +12,8 @@ defmodule Dave.Application do
       Dave.Repo,
       {DNSCluster, query: Application.get_env(:dave, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Dave.PubSub},
+      # the master clock for every playing score (DaveWeb.SessionChannel broadcasts)
+      Dave.Sessions,
       # Start a worker by calling: Dave.Worker.start_link(arg)
       # {Dave.Worker, arg},
       # Start to serve requests, typically the last entry

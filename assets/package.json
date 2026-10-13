@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "opensheetmusicdisplay": "^2.2.1",
+    "phoenix": "^1.8.15"
+  }
+}

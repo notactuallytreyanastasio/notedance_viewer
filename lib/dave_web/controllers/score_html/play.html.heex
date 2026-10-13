@@ -1,0 +1,23 @@
+<div id="page"
+     data-page="kid"
+     data-score-id={@score.noteflight_id}
+     data-timeline-url={"/s/#{@score.noteflight_id}/timeline"}
+     class="select-none">
+
+  <header class="sticky top-0 z-20 bg-white/90 backdrop-blur px-4 py-3 border-b border-zinc-200">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xl font-bold mr-2"><%= @score.title %></span>
+      <span id="status-dot" class="inline-block w-3 h-3 rounded-full bg-zinc-300"></span>
+    </div>
+    <div id="parts" class="flex flex-wrap gap-2 mt-3">
+      <button class="part hidden"></button>
+    </div>
+  </header>
+
+  <main class="px-2 pt-4">
+    <div id="osmd" class="osmd-large"></div>
+    <p id="pick-hint" class="text-center text-lg text-zinc-500 py-16">
+      Pick your instrument above ⬆
+    </p>
+  </main>
+</div>
