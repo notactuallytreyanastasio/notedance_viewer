@@ -63,13 +63,14 @@ defmodule Dave.Scores do
   end
 
   @doc "Remove a song and its parts. Re-importing the link brings it back."
-  def delete_score!(noteflight_id) do
-    score = get_score!(noteflight_id)
+  def delete_score!(slug) do
+    score = get_score!(slug)
     Repo.delete!(score)
   end
 
   @example_host "example"
   @example_id "mary-had-a-little-lamb"
+  @example_slug "little-lamb"
 
   @doc """
   Import the bundled example song (Mary Had a Little Lamb, three
@@ -102,6 +103,7 @@ defmodule Dave.Scores do
         |> Score.changeset(%{
           noteflight_host: host,
           noteflight_id: id,
+          slug: slug_for(host),
           title: score.title,
           composer: score.composer,
           beats: score.beats,
@@ -113,6 +115,13 @@ defmodule Dave.Scores do
           music_xml: full_xml,
           timeline: timeline
         })
+
+      # A song keeps its slug across re-imports: the kids may already have it
+      # typed in. Only a fresh row gets one.
+      changeset =
+        if is_nil(changeset.data.id),
+          do: changeset,
+          else: Ecto.Changeset.delete_change(changeset, :slug)
 
       score_row =
         if is_nil(changeset.data.id),
@@ -143,14 +152,41 @@ defmodule Dave.Scores do
     end
   end
 
+  # The example song has a fixed address so the handout can name it. Everything
+  # else draws two random words, retrying past the (rare) song that already has
+  # them. 1200 combinations against a classroom's handful of songs.
+  defp slug_for(@example_host), do: @example_slug
+
+  defp slug_for(_host) do
+    slug = Dave.Slug.generate()
+
+    if Repo.exists?(from s in Score, where: s.slug == ^slug),
+      do: slug_for(nil),
+      else: slug
+  end
+
   @doc "All scores, newest first."
   def list_scores do
     query = from s in Score, order_by: [desc: s.inserted_at], preload: [parts: ^part_query()]
     Repo.all(query)
   end
 
-  @doc "One score by its Noteflight id (the public URL identifier)."
-  def get_score!(noteflight_id) do
+  @doc """
+  One score by its two-word slug, as typed: `sunny-fox`, `sunnyfox` and
+  `Sunny Fox` all find the same row.
+  """
+  def get_score!(slug) do
+    key = Dave.Slug.normalize(slug)
+
+    Repo.one!(
+      from s in Score,
+        where: fragment("replace(?, '-', '')", s.slug) == ^key,
+        preload: [parts: ^part_query()]
+    )
+  end
+
+  @doc "One score by its Noteflight id, for the old `/s/<id>` links."
+  def get_score_by_noteflight_id!(noteflight_id) do
     Repo.one!(
       from s in Score,
         where: s.noteflight_id == ^noteflight_id,
@@ -158,9 +194,9 @@ defmodule Dave.Scores do
     )
   end
 
-  @doc "One part row, by score and part index."
-  def get_part!(noteflight_id, index) do
-    score = get_score!(noteflight_id)
+  @doc "One part row, by score slug and part index."
+  def get_part!(slug, index) do
+    score = get_score!(slug)
 
     Enum.find(score.parts, &(&1.index == index)) ||
       raise Ecto.NoResultsError, queryable: Part

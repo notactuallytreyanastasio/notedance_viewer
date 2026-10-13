@@ -236,6 +236,12 @@ button { cursor: pointer; touch-action: manipulation; }
 }
 .song-title { font-size: 22px; font-weight: 600; }
 .song-meta { display: flex; gap: 14px; margin-top: 2px; color: var(--ink-soft); font-size: 15px; }
+.song-address {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  padding: 4px 10px; border-radius: 999px; background: var(--paper); border: 1.5px solid var(--line);
+  color: var(--ink-soft); font-size: 15px;
+}
+.song-address b { color: var(--ink); font-weight: 700; }
 .song-parts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .song-actions { display: flex; gap: 10px; flex: none; }
 @media (max-width: 640px) {
@@ -310,7 +316,12 @@ button { cursor: pointer; touch-action: manipulation; }
 .join-inner { padding: 32px; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
 .join-inner h2 { font-size: 28px; }
 #join-qr { width: min(360px, 70vw); height: auto; border-radius: 12px; }
-.join-url { font-size: 15px; color: var(--ink-soft); word-break: break-all; max-width: 420px; }
+.join-or { font-size: 15px; color: var(--ink-soft); margin-top: -6px; }
+.join-url {
+  font-size: 30px; line-height: 1.15; color: var(--ink-soft); word-break: break-word; max-width: 480px;
+  font-weight: 500; letter-spacing: 0.01em;
+}
+.join-url b { color: var(--ink); font-weight: 700; }
 .join-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 
 /* ---------------------------------------------------------------- kid */

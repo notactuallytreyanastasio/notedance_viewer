@@ -49,7 +49,7 @@ export function initHome() {
       popover: {
         title: "Every song has two doors",
         description:
-          "“Open on the TV” is yours: play, pause and jump to a measure. “Kids' link” is theirs: pick an instrument and follow the line.",
+          "“Open on the TV” is yours: play, pause and jump to a measure. “Kids' link” is theirs: pick an instrument and follow the line. The two words on the little tablet are that link, short enough to type.",
         side: "top",
       },
     },

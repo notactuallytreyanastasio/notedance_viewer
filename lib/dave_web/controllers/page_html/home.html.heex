@@ -65,6 +65,10 @@
               <span>{length(score.parts)} parts</span>
               <span>{round(score.bpm)} bpm</span>
             </div>
+            <div class="song-address" title="What the kids type into the iPad">
+              <.icon name="hero-device-tablet" class="size-4" />
+              <span>{@host}/<b>{score.slug}</b></span>
+            </div>
             <div class="song-parts">
               <span
                 :for={{part, i} <- Enum.with_index(score.parts)}
@@ -76,10 +80,10 @@
             </div>
           </div>
           <div class="song-actions">
-            <a href={"/s/#{score.noteflight_id}/master"} class="btn-primary">Open on the TV</a>
-            <a href={"/s/#{score.noteflight_id}"} class="btn-secondary">Kids' link</a>
+            <a href={"/#{score.slug}/tv"} class="btn-primary">Open on the TV</a>
+            <a href={"/#{score.slug}"} class="btn-secondary">Kids' link</a>
             <form
-              action={"/s/#{score.noteflight_id}"}
+              action={"/#{score.slug}"}
               method="post"
               class="song-remove"
               data-confirm={"Remove “#{score.title}” from the list? Pasting its link again brings it back."}

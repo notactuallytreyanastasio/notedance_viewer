@@ -35,17 +35,42 @@ defmodule Dave.ScoresTest do
     assert Repo.all(Part) |> length() == 3
   end
 
-  test "get_score! by noteflight id, get_part! by index" do
-    Scores.import_xml(@host, @id, @nfmxml)
+  test "get_score! by slug, get_part! by index" do
+    score = Scores.import_xml(@host, @id, @nfmxml)
+    assert score.slug =~ ~r/^[a-z]+-[a-z]+$/
 
-    score = Scores.get_score!(@id)
-    assert score.noteflight_id == @id
+    assert Scores.get_score!(score.slug).noteflight_id == @id
+    assert Scores.get_score_by_noteflight_id!(@id).slug == score.slug
 
-    part = Scores.get_part!(@id, 1)
+    part = Scores.get_part!(score.slug, 1)
     assert part.name == "Alto / Tenor Xylophone"
 
     assert_raise Ecto.NoResultsError, fn ->
-      Scores.get_part!(@id, 9)
+      Scores.get_part!(score.slug, 9)
+    end
+  end
+
+  test "a Noteflight import gets two words; the example is always little-lamb" do
+    score = Scores.import_xml(@host, @id, @nfmxml)
+    [adjective, animal] = String.split(score.slug, "-")
+    assert adjective != "" and animal != ""
+    refute score.slug == "little-lamb"
+
+    assert Scores.import_example().slug == "little-lamb"
+  end
+
+  test "re-import keeps the slug the kids already typed" do
+    first = Scores.import_xml(@host, @id, @nfmxml)
+    second = Scores.import_xml(@host, @id, @nfmxml)
+    assert second.slug == first.slug
+  end
+
+  test "slug: lookup ignores case, hyphens and spaces" do
+    score = Scores.import_xml(@host, @id, @nfmxml)
+    [a, b] = String.split(score.slug, "-")
+
+    for typed <- [a <> b, String.upcase(score.slug), "#{a} #{b}", " #{a}-#{b} "] do
+      assert Scores.get_score!(typed).id == score.id, typed
     end
   end
 
@@ -62,8 +87,8 @@ defmodule Dave.ScoresTest do
   end
 
   test "delete_score! removes the song and its parts" do
-    Scores.import_xml(@host, @id, @nfmxml)
-    assert %Score{} = Scores.delete_score!(@id)
+    score = Scores.import_xml(@host, @id, @nfmxml)
+    assert %Score{} = Scores.delete_score!(score.slug)
     assert Repo.all(Score) == []
     assert Repo.all(Part) == []
   end

@@ -8,7 +8,7 @@ defmodule DaveWeb.ImportController do
       %Scores.Score{} = score ->
         conn
         |> put_flash(:info, "Imported “#{score.title}”. This is the TV view.")
-        |> redirect(to: "/s/#{score.noteflight_id}/master")
+        |> redirect(to: "/#{score.slug}/tv")
 
       other ->
         raise "import returned #{inspect(other)}"
@@ -26,6 +26,6 @@ defmodule DaveWeb.ImportController do
 
     conn
     |> put_flash(:info, "Loaded the example song. This is the TV view.")
-    |> redirect(to: "/s/#{score.noteflight_id}/master")
+    |> redirect(to: "/#{score.slug}/tv")
   end
 end

@@ -7,6 +7,7 @@ import { makeTour, tourSeen } from "./tour"
 export function initKid(pageEl, channel, session) {
   const clock = makeClock(channel)
   const scoreId = pageEl.dataset.scoreId
+  const slug = pageEl.dataset.slug
   const osmdEl = document.getElementById("osmd")
   const loadingEl = document.getElementById("sheet-loading")
   const barsEl = document.getElementById("parts")
@@ -76,7 +77,7 @@ export function initKid(pageEl, channel, session) {
       // big, but not one-measure-per-line on a portrait iPad (768px -> 1.1,
       // landscape 1024px -> 1.4, a laptop -> 1.5)
       const zoom = Math.min(1.5, Math.max(1.1, window.innerWidth / 720))
-      const osmd = await drawScore(osmdEl, `/s/${scoreId}/musicxml/${i}`, zoom)
+      const osmd = await drawScore(osmdEl, `/${slug}/musicxml/${i}`, zoom)
       loadingEl.classList.add("hidden")
       tracker = noteTracker(osmd, part.notes)
     }

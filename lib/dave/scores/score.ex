@@ -7,6 +7,8 @@ defmodule Dave.Scores.Score do
   schema "scores" do
     field :noteflight_host, :string
     field :noteflight_id, :string
+    # the kids' address, two words like "sunny-fox"; set once, kept on re-import
+    field :slug, :string
     field :title, :string
     field :composer, :string
     field :beats, :integer
@@ -29,6 +31,7 @@ defmodule Dave.Scores.Score do
     |> cast(attrs, [
       :noteflight_host,
       :noteflight_id,
+      :slug,
       :title,
       :composer,
       :beats,
@@ -40,7 +43,8 @@ defmodule Dave.Scores.Score do
       :music_xml,
       :timeline
     ])
-    |> validate_required([:noteflight_host, :noteflight_id, :title, :music_xml, :timeline])
+    |> validate_required([:noteflight_host, :noteflight_id, :slug, :title, :music_xml, :timeline])
     |> unique_constraint([:noteflight_host, :noteflight_id])
+    |> unique_constraint(:slug)
   end
 end

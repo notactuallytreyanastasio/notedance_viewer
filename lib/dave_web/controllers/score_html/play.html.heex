@@ -3,7 +3,8 @@
     id="page"
     data-page="kid"
     data-score-id={@score.noteflight_id}
-    data-timeline-url={"/s/#{@score.noteflight_id}/timeline"}
+    data-slug={@score.slug}
+    data-timeline-url={"/#{@score.slug}/timeline"}
     class="kid select-none"
   >
     <header class="kid-top">

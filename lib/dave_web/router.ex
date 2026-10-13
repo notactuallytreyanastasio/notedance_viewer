@@ -21,12 +21,20 @@ defmodule DaveWeb.Router do
     post "/import", ImportController, :create
     post "/import/example", ImportController, :example
 
-    get "/s/:noteflight_id", ScoreController, :play
-    get "/s/:noteflight_id/master", ScoreController, :master
-    get "/s/:noteflight_id/musicxml", ScoreController, :musicxml
-    get "/s/:noteflight_id/musicxml/:part", ScoreController, :musicxml
-    get "/s/:noteflight_id/timeline", ScoreController, :timeline
-    delete "/s/:noteflight_id", ScoreController, :delete
+    # The old addresses, from before songs had two-word slugs. Dave may have
+    # one bookmarked or printed; they land on the new one.
+    get "/s/:noteflight_id", ScoreController, :legacy
+    get "/s/:noteflight_id/master", ScoreController, :legacy_master
+
+    # The kids' address is the song's two words at the root, so that
+    # dave.bobbby.online/sunny-fox is the whole thing to type. These stay
+    # last: every other route wins over them.
+    get "/:slug", ScoreController, :play
+    get "/:slug/tv", ScoreController, :master
+    get "/:slug/musicxml", ScoreController, :musicxml
+    get "/:slug/musicxml/:part", ScoreController, :musicxml
+    get "/:slug/timeline", ScoreController, :timeline
+    delete "/:slug", ScoreController, :delete
   end
 
   # Other scopes may use custom stacks.

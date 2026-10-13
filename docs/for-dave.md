@@ -34,7 +34,7 @@ From the song list, press **Open on the TV**.
 | ⏮ | Back to the beginning. |
 | **Start from measure 1 2 3 …** | Plays from that measure. The iPads jump with you. |
 | 🔊 | Sound on or off. The TV plays a simple xylophone of every part. |
-| **Kids join** | Puts a big QR code on the screen for the iPads. |
+| **Kids join** | Puts a big QR code and the song's two-word address on the screen for the iPads. |
 
 On a laptop keyboard: **space** plays and pauses, **←** starts over,
 **m** mutes.
@@ -46,9 +46,13 @@ instruments they picked, so you can see when everyone is in.
 
 ## On the iPads
 
+Every song has a two-word address, like **dave.bobbby.online/sunny-fox**.
+It is printed under the song in the list and under the QR code on the TV.
+Capitals and the hyphen do not matter: `sunnyfox` works too.
+
 1. Press **Kids join** on the TV. A kid points the iPad camera at the
-   code and taps the link. Or send them the **Kids' link** from the song
-   list.
+   code and taps the link, or types the two words into Safari. Or send
+   them the **Kids' link** from the song list.
 2. The kid taps their instrument. The bars are big on purpose.
 3. That is it. The red line moves when you press play on the TV. There is
    nothing for a kid to press.

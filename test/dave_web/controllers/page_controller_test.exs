@@ -23,8 +23,9 @@ defmodule DaveWeb.PageControllerTest do
     html = conn |> get(~p"/") |> html_response(200)
 
     assert html =~ "Mary Had a Little Lamb"
-    assert html =~ ~s|href="/s/mary-had-a-little-lamb/master"|
-    assert html =~ ~s|href="/s/mary-had-a-little-lamb"|
+    assert html =~ ~s|href="/little-lamb/tv"|
+    assert html =~ ~s|href="/little-lamb"|
+    assert html =~ ~r|www.example.com/<b>little-lamb</b>|
     assert html =~ "Open on the TV"
     assert html =~ "Kids' link"
     refute html =~ ~s|action="/import/example"|
@@ -32,10 +33,11 @@ defmodule DaveWeb.PageControllerTest do
 
   test "POST /import/example loads the bundled song and lands on the TV view", %{conn: conn} do
     conn = post(conn, ~p"/import/example")
-    assert redirected_to(conn) == "/s/mary-had-a-little-lamb/master"
+    assert redirected_to(conn) == "/little-lamb/tv"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Loaded the example song"
 
-    html = conn |> recycle() |> get(~p"/s/mary-had-a-little-lamb/master") |> html_response(200)
+    html = conn |> recycle() |> get(~p"/little-lamb/tv") |> html_response(200)
+    assert html =~ ~r|<b>little-lamb</b>|
     assert html =~ "Loaded the example song"
     assert html =~ ~s|id="btn-play"|
     assert html =~ ~s|id="btn-join"|
@@ -52,7 +54,7 @@ defmodule DaveWeb.PageControllerTest do
 
   test "GET /s/:id is the kid view: instruments, status strip, help button", %{conn: conn} do
     Scores.import_example()
-    html = conn |> get(~p"/s/mary-had-a-little-lamb") |> html_response(200)
+    html = conn |> get(~p"/little-lamb") |> html_response(200)
 
     assert html =~ ~s|id="parts"|
     assert html =~ "Tap your instrument"
@@ -63,13 +65,34 @@ defmodule DaveWeb.PageControllerTest do
 
   test "DELETE /s/:id takes a song off the list and says how to get it back", %{conn: conn} do
     Scores.import_example()
-    conn = delete(conn, ~p"/s/mary-had-a-little-lamb")
+    conn = delete(conn, ~p"/little-lamb")
     assert redirected_to(conn) == "/"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Paste its link again"
     assert Scores.list_scores() == []
   end
 
   test "a song that is not there gets the friendly 404", %{conn: conn} do
-    assert_error_sent 404, fn -> get(conn, ~p"/s/not-a-song") end
+    assert_error_sent 404, fn -> get(conn, ~p"/not-a-song") end
+  end
+
+  test "the slug is forgiving about case and hyphens, as typed on an iPad", %{conn: conn} do
+    Scores.import_example()
+
+    for path <- [
+          "/littlelamb",
+          "/Little-Lamb",
+          "/LITTLELAMB",
+          "/little-lamb/tv",
+          "/littlelamb/tv"
+        ] do
+      assert conn |> get(path) |> html_response(200) =~ "Mary Had a Little Lamb", path
+    end
+  end
+
+  test "the old /s/<noteflight id> addresses land on the slug", %{conn: conn} do
+    Scores.import_example()
+
+    assert redirected_to(get(conn, "/s/mary-had-a-little-lamb")) == "/little-lamb"
+    assert redirected_to(get(conn, "/s/mary-had-a-little-lamb/master")) == "/little-lamb/tv"
   end
 end

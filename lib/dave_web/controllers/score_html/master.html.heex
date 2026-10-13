@@ -3,9 +3,10 @@
     id="page"
     data-page="master"
     data-score-id={@score.noteflight_id}
-    data-timeline-url={"/s/#{@score.noteflight_id}/timeline"}
-    data-musicxml-url={"/s/#{@score.noteflight_id}/musicxml"}
-    data-kid-path={"/s/#{@score.noteflight_id}"}
+    data-slug={@score.slug}
+    data-timeline-url={"/#{@score.slug}/timeline"}
+    data-musicxml-url={"/#{@score.slug}/musicxml"}
+    data-kid-path={"/#{@score.slug}"}
     class="master select-none"
   >
     <header class="tv-top">
@@ -85,7 +86,8 @@
       <div class="join-inner">
         <h2>Point the iPad camera here</h2>
         <canvas id="join-qr" width="360" height="360"></canvas>
-        <p id="join-url" class="join-url"></p>
+        <p class="join-or">or type this in</p>
+        <p id="join-url" class="join-url"><span id="join-host"></span>/<b>{@score.slug}</b></p>
         <div class="join-actions">
           <button type="button" id="btn-copy-link" class="btn-secondary">Copy the link</button>
           <button type="button" id="btn-join-close" class="btn-primary">Done</button>

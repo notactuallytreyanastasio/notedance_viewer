@@ -160,7 +160,8 @@ export function initMaster(pageEl, channel) {
   // ---- kids join: QR + link
   const dialog = document.getElementById("join-dialog")
   const kidUrl = `${window.location.origin}${pageEl.dataset.kidPath}`
-  document.getElementById("join-url").textContent = kidUrl
+  // the typeable form: no scheme, no port on the real site, the two words bold
+  document.getElementById("join-host").textContent = window.location.host
   QRCode.toCanvas(document.getElementById("join-qr"), kidUrl, {
     width: 360,
     margin: 1,
@@ -210,7 +211,7 @@ export function initMaster(pageEl, channel) {
       popover: {
         title: "Getting the kids in",
         description:
-          "Press this to put a big code on the TV. A kid points the iPad camera at it, taps their instrument, and they are in. Or copy the link and send it.",
+          "Press this to put a big code on the TV. A kid points the iPad camera at it, taps their instrument, and they are in. Under the code are the song's two words: a kid can type those into the iPad instead.",
         side: "bottom",
         align: "end",
       },
