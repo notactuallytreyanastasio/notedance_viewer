@@ -1,23 +1,38 @@
-<div id="page"
-     data-page="kid"
-     data-score-id={@score.noteflight_id}
-     data-timeline-url={"/s/#{@score.noteflight_id}/timeline"}
-     class="select-none">
+<Layouts.app flash={@flash}>
+  <div
+    id="page"
+    data-page="kid"
+    data-score-id={@score.noteflight_id}
+    data-timeline-url={"/s/#{@score.noteflight_id}/timeline"}
+    class="kid select-none"
+  >
+    <header class="kid-top">
+      <div class="kid-row">
+        <h1 class="kid-title">{@score.title}</h1>
+        <button
+          type="button"
+          id="btn-tour"
+          class="btn-help"
+          aria-label="Walk me through using this"
+          title="Walk me through using this"
+        >?</button>
+      </div>
 
-  <header class="sticky top-0 z-20 bg-white/90 backdrop-blur px-4 py-3 border-b border-zinc-200">
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xl font-bold mr-2"><%= @score.title %></span>
-      <span id="status-dot" class="inline-block w-3 h-3 rounded-full bg-zinc-300"></span>
-    </div>
-    <div id="parts" class="flex flex-wrap gap-2 mt-3">
-      <button class="part hidden"></button>
-    </div>
-  </header>
+      <section id="instruments" class="instruments">
+        <p id="pick-prompt" class="pick-prompt">Tap your instrument</p>
+        <div id="parts" class="bars"></div>
+      </section>
 
-  <main class="px-2 pt-4">
-    <div id="osmd" class="osmd-large"></div>
-    <p id="pick-hint" class="text-center text-lg text-zinc-500 py-16">
-      Pick your instrument above ⬆
-    </p>
-  </main>
-</div>
+      <div id="kid-status" class="kid-status" data-status="none">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="kid-status-text">Pick an instrument to start</span>
+        <button type="button" id="btn-change" class="btn-change hidden">Change instrument</button>
+      </div>
+    </header>
+
+    <main class="sheet">
+      <div id="osmd" class="osmd"></div>
+      <div id="sheet-loading" class="sheet-loading hidden">Drawing your part…</div>
+    </main>
+  </div>
+</Layouts.app>

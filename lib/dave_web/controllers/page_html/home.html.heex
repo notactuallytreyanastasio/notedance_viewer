@@ -1,31 +1,80 @@
-<h1 class="text-4xl font-bold mb-2">dave</h1>
-<p class="mb-6 text-zinc-500">classroom music viewer — paste a Noteflight score URL, give the kids the link</p>
+<Layouts.app flash={@flash}>
+  <div id="page" data-page="home" class="home">
+    <header class="home-top">
+      <a href="/" class="brand" aria-label="dave, home">
+        <span class="brand-bars" aria-hidden="true">
+          <i></i><i></i><i></i><i></i>
+        </span>
+        <span>dave</span>
+      </a>
+      <button type="button" id="btn-tour" class="btn-tour">Walk me through using this</button>
+    </header>
 
-<form action="/import" method="post" class="flex gap-2 mb-8">
-  <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-  <input
-    type="url"
-    name="url"
-    required
-    placeholder="https://….learning.noteflight.com/scores/view/…"
-    class="flex-1 rounded-lg border border-zinc-300 px-4 py-3 text-lg"
-  />
-  <button class="rounded-lg bg-orange-600 px-6 py-3 text-lg font-semibold text-white">Import</button>
-</form>
+    <section id="tour-intro" class="hero">
+      <h1>Put a song on the TV.<br />Hand the kids the link.</h1>
+      <p>
+        Paste a Noteflight Learning score, and every iPad in the room follows the
+        red line while you press play on the TV.
+      </p>
+    </section>
 
-<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-  <%= for score <- @scores do %>
-    <a href={"/s/#{score.noteflight_id}"} class="block rounded-xl border border-zinc-200 p-4 hover:border-orange-400">
-      <div class="text-lg font-semibold"><%= score.title %></div>
-      <div class="text-sm text-zinc-500"><%= score.composer %></div>
-      <div class="mt-2 text-sm text-zinc-400">
-        <%= length(score.parts) %> parts · ♩=<%= round(score.bpm) %> ·
-        <%= for part <- score.parts, do: part.short_name <> " " %>
+    <form id="import-form" action="/import" method="post" class="import">
+      <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+      <label for="import-url" class="import-label">Paste a Noteflight score link</label>
+      <div class="import-row">
+        <input
+          id="import-url"
+          type="url"
+          name="url"
+          required
+          autocomplete="off"
+          placeholder="https://….learning.noteflight.com/scores/view/…"
+        />
+        <button type="submit" id="btn-import" class="btn-primary">Import</button>
       </div>
-    </a>
-  <% end %>
-</div>
+      <p class="import-help">
+        Open the score in Noteflight, copy the address from the top of the browser, paste it here.
+      </p>
+    </form>
 
-<%= if @scores == [] do %>
-  <p class="text-zinc-400">No scores yet. Paste the first one above.</p>
-<% end %>
+    <section class="songs-section">
+      <div class="songs-head">
+        <h2>Songs</h2>
+        <form :if={@scores == []} action="/import/example" method="post">
+          <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+          <button type="submit" id="btn-example" class="btn-secondary">Load the example song</button>
+        </form>
+      </div>
+
+      <p :if={@scores == []} id="songs-empty" class="songs-empty">
+        No songs yet. Paste a link above, or load the example to try everything out first.
+      </p>
+
+      <ul :if={@scores != []} id="songs" class="songs">
+        <li :for={score <- @scores} class="song">
+          <div class="song-text">
+            <div class="song-title">{score.title}</div>
+            <div class="song-meta">
+              <span :if={score.composer && score.composer != ""}>{score.composer}</span>
+              <span>{length(score.parts)} parts</span>
+              <span>{round(score.bpm)} bpm</span>
+            </div>
+            <div class="song-parts">
+              <span
+                :for={{part, i} <- Enum.with_index(score.parts)}
+                class="chip"
+                data-bar={rem(i, 8)}
+              >
+                {part.name}
+              </span>
+            </div>
+          </div>
+          <div class="song-actions">
+            <a href={"/s/#{score.noteflight_id}/master"} class="btn-primary">Open on the TV</a>
+            <a href={"/s/#{score.noteflight_id}"} class="btn-secondary">Kids' link</a>
+          </div>
+        </li>
+      </ul>
+    </section>
+  </div>
+</Layouts.app>

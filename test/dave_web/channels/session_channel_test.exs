@@ -46,4 +46,41 @@ defmodule DaveWeb.SessionChannelTest do
     assert_push "state", %{status: :paused, position_ms: pos}
     assert pos >= 10_000
   end
+
+  # The setup's kid socket and the socket under test both push to this
+  # process, and a channel receives the diff of its own join, so presence
+  # messages are read until one carries the expected metas.
+  defp presence_metas_until(event, pred, tries \\ 5) do
+    assert_push ^event, payload
+    metas = payload |> Map.get(:joins, payload) |> Map.values() |> Enum.flat_map(& &1.metas)
+
+    cond do
+      Enum.any?(metas, pred) -> metas
+      tries > 1 -> presence_metas_until(event, pred, tries - 1)
+      true -> flunk("no #{event} matched; last metas: #{inspect(metas)}")
+    end
+  end
+
+  test "every view is tracked; a kid's instrument pick shows up in presence", %{socket: socket} do
+    assert [%{role: "kid", part: nil}] =
+             presence_metas_until("presence_state", &(&1.role == "kid"))
+             |> Enum.map(&Map.take(&1, [:role, :part]))
+
+    ref = push(socket, "part", %{"name" => "Bass Xylophone"})
+    assert_reply ref, :ok
+
+    assert [%{part: "Bass Xylophone", role: "kid"}] =
+             presence_metas_until("presence_diff", &(&1.part == "Bass Xylophone"))
+             |> Enum.map(&Map.take(&1, [:role, :part]))
+  end
+
+  test "the master page joins with its role" do
+    {:ok, socket} = connect(DaveWeb.UserSocket, %{}, %{})
+
+    {:ok, _reply, _socket} =
+      subscribe_and_join(socket, DaveWeb.SessionChannel, @topic, %{"role" => "master"})
+
+    metas = presence_metas_until("presence_state", &(&1.role == "master"))
+    assert Enum.any?(metas, &(&1.role == "master"))
+  end
 end

@@ -7,12 +7,16 @@ defmodule DaveWeb.SessionChannel do
   carries the server's wall clock, and the client computes
   `offset = server_now + rtt/2 - client_now` from the round trip.
 
+  Every view also tracks itself in `DaveWeb.Presence` with its role and,
+  for kids, the instrument they picked, so the TV can show who is following.
+
   Any member can send transport control; only the master page shows the
   controls. This is a classroom, not a bank.
   """
   use DaveWeb, :channel
 
   alias Dave.Sessions
+  alias DaveWeb.Presence
 
   # No explicit PubSub.subscribe: Phoenix subscribes every channel process
   # to the topic it joins automatically (that is how Phoenix.Channel.broadcast
@@ -20,14 +24,26 @@ defmodule DaveWeb.SessionChannel do
   # delivers each Dave.Sessions broadcast twice — verified by watching one
   # PID push the same "state" twice before this comment existed.
   @impl true
-  def join("score:" <> nf_id, _params, socket) do
+  def join("score:" <> nf_id, params, socket) do
     send(self(), :after_join)
-    {:ok, assign(socket, nf_id: nf_id)}
+
+    role = if params["role"] == "master", do: "master", else: "kid"
+    client_id = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+
+    {:ok, assign(socket, nf_id: nf_id, role: role, client_id: client_id)}
   end
 
   @impl true
   def handle_info(:after_join, socket) do
     push(socket, "state", Sessions.state(socket.assigns.nf_id))
+
+    {:ok, _} =
+      Presence.track(socket, socket.assigns.client_id, %{
+        role: socket.assigns.role,
+        part: nil
+      })
+
+    push(socket, "presence_state", Presence.list(socket))
     {:noreply, socket}
   end
 
@@ -59,6 +75,17 @@ defmodule DaveWeb.SessionChannel do
 
   def handle_in("seek", %{"position_ms" => pos}, socket) do
     Sessions.seek(socket.assigns.nf_id, pos)
+    {:reply, {:ok, %{}}, socket}
+  end
+
+  # a kid picked (or changed) their instrument
+  def handle_in("part", %{"name" => name}, socket) when is_binary(name) do
+    {:ok, _} =
+      Presence.update(socket, socket.assigns.client_id, %{
+        role: socket.assigns.role,
+        part: name
+      })
+
     {:reply, {:ok, %{}}, socket}
   end
 end

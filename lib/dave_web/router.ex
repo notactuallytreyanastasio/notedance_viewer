@@ -19,6 +19,7 @@ defmodule DaveWeb.Router do
 
     get "/", PageController, :home
     post "/import", ImportController, :create
+    post "/import/example", ImportController, :example
 
     get "/s/:noteflight_id", ScoreController, :play
     get "/s/:noteflight_id/master", ScoreController, :master

@@ -9,7 +9,7 @@ defmodule DaveWeb.ScoreController do
 
     conn
     |> assign(:score, score)
-    |> assign(:part_index, nil)
+    |> assign(:page_title, score.title)
     |> render(:play)
   end
 
@@ -19,6 +19,7 @@ defmodule DaveWeb.ScoreController do
 
     conn
     |> assign(:score, score)
+    |> assign(:page_title, "#{score.title} on the TV")
     |> render(:master)
   end
 

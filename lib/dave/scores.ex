@@ -28,6 +28,23 @@ defmodule Dave.Scores do
       raise ImportError, Exception.message(e)
   end
 
+  @example_host "example"
+  @example_id "mary-had-a-little-lamb"
+
+  @doc """
+  Import the bundled example song (Mary Had a Little Lamb, three
+  xylophones), so a first visit has something to put on the TV before any
+  Noteflight link exists. Idempotent: re-running updates the same row.
+  """
+  def import_example do
+    xml = File.read!(Application.app_dir(:dave, "priv/examples/mary_had_a_little_lamb.nfmxml"))
+    import_xml(@example_host, @example_id, xml)
+  end
+
+  @doc "True for the row `import_example/0` creates."
+  def example?(%Score{noteflight_host: @example_host}), do: true
+  def example?(_score), do: false
+
   @doc """
   Import from already-fetched NFMXML (also the offline test path).
   """

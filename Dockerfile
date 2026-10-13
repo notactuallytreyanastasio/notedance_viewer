@@ -2,7 +2,7 @@
 # stack on the Hetzner box). Same image shape as marginalia/blinks.
 
 ARG ELIXIR_VERSION=1.18.4
-ARG OTP_VERSION=28
+ARG OTP_VERSION=28.2
 ARG DEBIAN_VERSION=trixie-20260610-slim
 
 ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
@@ -11,7 +11,7 @@ ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
 FROM ${BUILDER_IMAGE} AS builder
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential git \
+  && apt-get install -y --no-install-recommends build-essential git nodejs npm \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
