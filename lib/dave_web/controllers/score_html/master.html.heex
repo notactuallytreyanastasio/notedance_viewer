@@ -58,6 +58,7 @@
           </button>
           <div id="following" class="following" title="iPads on this song">
             <span id="live-dot" class="live-dot"></span>
+            <.icon name="hero-device-tablet" class="size-5" />
             <span id="following-text">No iPads yet</span>
           </div>
           <button type="button" id="btn-tour" class="btn-tour">Walk me through using this</button>
@@ -75,7 +76,9 @@
 
     <main class="sheet">
       <div id="osmd" class="osmd"></div>
-      <div id="sheet-loading" class="sheet-loading">Drawing the score…</div>
+      <div id="sheet-loading" class="sheet-loading">
+        <span class="loader" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Drawing the score…
+      </div>
     </main>
 
     <dialog id="join-dialog" class="join-dialog">

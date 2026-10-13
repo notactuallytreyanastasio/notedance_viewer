@@ -20,11 +20,13 @@
 
       <section id="instruments" class="instruments">
         <p id="pick-prompt" class="pick-prompt">Tap your instrument</p>
+        <p class="pick-hint">You will see just your part, nice and big.</p>
         <div id="parts" class="bars"></div>
       </section>
 
       <div id="kid-status" class="kid-status" data-status="none">
         <span class="live-dot" aria-hidden="true"></span>
+        <span id="kid-part" class="part-pill hidden"></span>
         <span id="kid-status-text">Pick an instrument to start</span>
         <button type="button" id="btn-change" class="btn-change hidden">Change instrument</button>
       </div>
@@ -32,7 +34,9 @@
 
     <main class="sheet">
       <div id="osmd" class="osmd"></div>
-      <div id="sheet-loading" class="sheet-loading hidden">Drawing your part…</div>
+      <div id="sheet-loading" class="sheet-loading hidden">
+        <span class="loader" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Drawing your part…
+      </div>
     </main>
   </div>
 </Layouts.app>

@@ -394,3 +394,66 @@ button { cursor: pointer; touch-action: manipulation; }
 .dave-tour .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: var(--sheet); }
 .dave-tour .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: var(--sheet); }
 .dave-tour .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: var(--sheet); }
+
+/* ---------------------------------------------------------------- primping */
+
+/* the same soft blobs as the share card, as gradients so nothing blurs at runtime */
+body {
+  background:
+    radial-gradient(640px 640px at -6% -12%, #e9edfd 0%, rgba(233, 237, 253, 0) 62%),
+    radial-gradient(560px 560px at 106% 108%, #fde8e6 0%, rgba(253, 232, 230, 0) 62%),
+    var(--paper);
+  background-attachment: fixed;
+}
+
+/* soft tinted shadows under the things you press */
+.btn-primary { box-shadow: 0 6px 16px rgba(143, 160, 230, 0.35); }
+.btn-primary:hover { box-shadow: 0 8px 20px rgba(143, 160, 230, 0.45); }
+.btn-secondary { box-shadow: 0 2px 6px rgba(61, 58, 92, 0.05); }
+.tb-play { box-shadow: 0 8px 22px rgba(143, 160, 230, 0.4); }
+.tb-play[data-playing="true"] { box-shadow: 0 8px 22px rgba(242, 139, 130, 0.45); }
+.join-btn { box-shadow: 0 6px 16px rgba(181, 150, 240, 0.35); }
+.btn-tour { box-shadow: 0 2px 8px rgba(143, 160, 230, 0.2); }
+
+/* hero: words left, a little xylophone right */
+.hero { display: flex; align-items: center; justify-content: space-between; gap: 32px; max-width: none; padding: 48px 0 36px; }
+.hero-text { max-width: 560px; }
+.xylo { position: relative; width: 250px; height: 220px; flex: none; }
+.xylo-bars { position: absolute; left: 20px; top: 6px; display: flex; gap: 12px; align-items: flex-start; }
+.xylo-bars i { display: block; width: 40px; border-radius: 12px 12px 18px 18px; box-shadow: inset 0 -8px 0 rgba(61, 58, 92, 0.1), 0 10px 24px rgba(61, 58, 92, 0.12); position: relative; }
+.xylo-bars i::before, .xylo-bars i::after { content: ""; position: absolute; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: rgba(61, 58, 92, 0.16); }
+.xylo-bars i::before { top: 14px; } .xylo-bars i::after { bottom: 18px; }
+.xylo-bars i:nth-child(1) { height: 210px; background: var(--bar-0); }
+.xylo-bars i:nth-child(2) { height: 184px; background: var(--bar-1); }
+.xylo-bars i:nth-child(3) { height: 158px; background: var(--bar-2); }
+.xylo-bars i:nth-child(4) { height: 132px; background: var(--bar-3); }
+.xylo-mallet { position: absolute; left: -10px; top: 118px; width: 150px; height: 9px; background: var(--bar-4); border-radius: 5px; transform: rotate(-32deg); transform-origin: left center; box-shadow: 0 6px 14px rgba(61, 58, 92, 0.15); animation: strike 2.6s ease-in-out infinite; }
+.xylo-mallet::after { content: ""; position: absolute; right: -14px; top: -11px; width: 32px; height: 32px; border-radius: 50%; background: var(--bar-7); box-shadow: inset 0 -4px 0 rgba(61, 58, 92, 0.1); }
+@keyframes strike { 0%, 70%, 100% { transform: rotate(-32deg); } 80% { transform: rotate(-22deg); } 86% { transform: rotate(-34deg); } }
+@media (max-width: 760px) { .xylo { display: none; } }
+
+.home-foot { margin-top: 64px; color: var(--ink-faint); font-size: 15px; text-align: center; }
+
+/* song rows lift a touch under the pointer */
+.song { transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease; }
+.song:hover { transform: translateY(-2px); border-color: #d8d2ea; box-shadow: var(--shadow); }
+
+/* loader: the brand bars, bouncing */
+.sheet-loading { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.loader { display: inline-flex; align-items: flex-end; gap: 5px; height: 34px; }
+.loader i { display: block; width: 10px; border-radius: 4px; animation: bounce 1s ease-in-out infinite; }
+.loader i:nth-child(1) { height: 34px; background: var(--bar-0); }
+.loader i:nth-child(2) { height: 28px; background: var(--bar-1); animation-delay: 0.12s; }
+.loader i:nth-child(3) { height: 22px; background: var(--bar-2); animation-delay: 0.24s; }
+.loader i:nth-child(4) { height: 16px; background: var(--bar-3); animation-delay: 0.36s; }
+@keyframes bounce { 50% { transform: translateY(-7px); } }
+
+/* TV: the "who is following" pill */
+.following { padding: 0 14px; height: 48px; border-radius: 999px; background: var(--sheet); border: 2px solid var(--line); color: var(--ink); font-weight: 500; }
+.following .live-dot { width: 10px; height: 10px; }
+
+/* kid: hint under the prompt, instrument pill in the strip, bars that boing */
+.pick-hint { margin: -6px 0 14px; color: var(--ink-soft); font-size: 18px; font-weight: 450; }
+.part-pill { display: inline-block; padding: 4px 14px; border-radius: 999px; background: var(--bar-color, var(--line)); color: var(--ink); font-weight: 600; box-shadow: inset 0 -3px 0 rgba(61, 58, 92, 0.1); }
+.bar:active { animation: boing 260ms ease-out; }
+@keyframes boing { 30% { transform: translateY(4px) scaleX(1.02); } 100% { transform: translateY(0); } }

@@ -14,6 +14,7 @@ export function initKid(pageEl, channel) {
   const statusText = document.getElementById("kid-status-text")
   const liveDot = statusEl.querySelector(".live-dot")
   const changeBtn = document.getElementById("btn-change")
+  const partPill = document.getElementById("kid-part")
   const rememberKey = `dave:part:${scoreId}`
 
   let tracker = null
@@ -59,7 +60,9 @@ export function initKid(pageEl, channel) {
       b.setAttribute("aria-pressed", b.dataset.index === i ? "true" : "false")
     }
     statusEl.dataset.part = part.name
-    statusEl.style.setProperty("--bar-color", `var(--bar-${n % 8})`)
+    partPill.textContent = part.name
+    partPill.dataset.bar = String(n % 8)
+    partPill.classList.remove("hidden")
     changeBtn.classList.remove("hidden")
     channel.push("part", { name: part.name })
     keepScreenAwake()
@@ -88,10 +91,9 @@ export function initKid(pageEl, channel) {
     const status = picked == null ? "none" : clock.status
     statusEl.dataset.status = status
     liveDot.dataset.live = picked == null ? "" : clock.status
-    const name = statusEl.dataset.part
     if (status === "none") statusText.textContent = "Pick an instrument to start"
-    else if (status === "playing") statusText.textContent = `${name}: follow the line`
-    else statusText.textContent = `${name}: waiting for your teacher to press play`
+    else if (status === "playing") statusText.textContent = "Follow the line"
+    else statusText.textContent = "Waiting for your teacher to press play"
   }
 
   clock.onState(renderStatus)
