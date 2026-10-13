@@ -88,8 +88,12 @@ defmodule Dave.NFM.Fetch do
 
   defp capture_payload(xml) do
     case Regex.run(~r|<noteflightCompressed>(.*?)</noteflightCompressed>|s, xml) do
-      [_, payload] -> payload
-      nil -> raise ArgumentError, "no <noteflightCompressed> in body (first 200 bytes: #{binary_part(xml, 0, min(byte_size(xml), 200))})"
+      [_, payload] ->
+        payload
+
+      nil ->
+        raise ArgumentError,
+              "no <noteflightCompressed> in body (first 200 bytes: #{binary_part(xml, 0, min(byte_size(xml), 200))})"
     end
   end
 

@@ -33,7 +33,8 @@ defmodule Dave.Sessions do
 
   def pause(nf_id), do: GenServer.call(__MODULE__, {:control, nf_id, :pause})
 
-  def seek(nf_id, position_ms), do: GenServer.call(__MODULE__, {:control, nf_id, {:seek, position_ms}})
+  def seek(nf_id, position_ms),
+    do: GenServer.call(__MODULE__, {:control, nf_id, {:seek, position_ms}})
 
   @doc """
   The live position for a score, as the broadcast payload
@@ -54,12 +55,13 @@ defmodule Dave.Sessions do
 
   @impl true
   def handle_call({:state, nf_id}, _from, sessions) do
-    session = Map.get(sessions, nf_id, %{
-      status: :paused,
-      position_ms: 0,
-      at_mono: monotonic(),
-      at_wall: wall()
-    })
+    session =
+      Map.get(sessions, nf_id, %{
+        status: :paused,
+        position_ms: 0,
+        at_mono: monotonic(),
+        at_wall: wall()
+      })
 
     {:reply, payload(session, monotonic(), wall()), sessions}
   end

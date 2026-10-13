@@ -12,7 +12,10 @@ defmodule Dave.NFM.Parser do
   alias Dave.NFM.{Part, Score, Note, Measure}
 
   @accidentals %{
-    "sharp" => 1, "doubleSharp" => 2, "flat" => -1, "doubleFlat" => -2,
+    "sharp" => 1,
+    "doubleSharp" => 2,
+    "flat" => -1,
+    "doubleFlat" => -2,
     "natural" => 0
   }
 
@@ -216,9 +219,12 @@ defmodule Dave.NFM.Parser do
 
     alter =
       case all(children, "accidental") do
-        [] -> 0
+        [] ->
+          0
+
         [a | _] ->
           acc = text!(a, "type")
+
           Map.fetch(@accidentals, acc) ||
             raise(ArgumentError, "TODO: accidental #{inspect(acc)} in #{inspect(node)}")
       end
@@ -234,7 +240,8 @@ defmodule Dave.NFM.Parser do
     end
   end
 
-  defp with_index(list, fun), do: list |> Enum.with_index() |> Enum.map(fn {e, i} -> fun.(e, i) end)
+  defp with_index(list, fun),
+    do: list |> Enum.with_index() |> Enum.map(fn {e, i} -> fun.(e, i) end)
 
   defp kids({_tag, _attrs, children}), do: children
 
@@ -284,7 +291,9 @@ defmodule Dave.NFM.Parser do
 
   defp to_float(s) do
     case Integer.parse(s) do
-      {i, ""} -> {:ok, i * 1.0}
+      {i, ""} ->
+        {:ok, i * 1.0}
+
       _ ->
         case Float.parse(s) do
           {f, ""} -> {:ok, f}

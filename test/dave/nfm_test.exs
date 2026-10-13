@@ -18,7 +18,8 @@ defmodule Dave.NFMTest do
   end
 
   test "parse_url extracts host and score id" do
-    url = "https://mflms-bsdk5.learning.noteflight.com/scores/view/eea68d68d65a761a2d228b73163cee89518a66c4"
+    url =
+      "https://mflms-bsdk5.learning.noteflight.com/scores/view/eea68d68d65a761a2d228b73163cee89518a66c4"
 
     assert Fetch.parse_url(url) ==
              {"mflms-bsdk5.learning.noteflight.com", "eea68d68d65a761a2d228b73163cee89518a66c4"}
@@ -49,7 +50,13 @@ defmodule Dave.NFMTest do
   end
 
   test "parse: first soprano note is D5 quarter, colored red" do
-    note = Parser.parse(@nfmxml).parts |> hd() |> Map.fetch!(:measures) |> hd() |> Map.fetch!(:notes) |> hd()
+    note =
+      Parser.parse(@nfmxml).parts
+      |> hd()
+      |> Map.fetch!(:measures)
+      |> hd()
+      |> Map.fetch!(:notes)
+      |> hd()
 
     assert note.value == 6.0
     assert note.pitch == %{step: "D", alter: 0, octave: 5}
@@ -57,7 +64,12 @@ defmodule Dave.NFMTest do
   end
 
   test "parse: measure 8 is a half note and a half rest" do
-    notes = Parser.parse(@nfmxml).parts |> hd() |> Map.fetch!(:measures) |> Enum.at(7) |> Map.fetch!(:notes)
+    notes =
+      Parser.parse(@nfmxml).parts
+      |> hd()
+      |> Map.fetch!(:measures)
+      |> Enum.at(7)
+      |> Map.fetch!(:notes)
 
     assert [%{value: 7.0, pitch: %{step: "B", octave: 4}}, %{value: 7.0, pitch: nil}] = notes
   end

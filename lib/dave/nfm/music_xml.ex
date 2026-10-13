@@ -32,8 +32,7 @@ defmodule Dave.NFM.MusicXML do
       {"score-partwise", [{"version", "4.0"}],
        [
          {"work", [], [{"work-title", [], [escape(score.title)]}]},
-         {"identification", [],
-          [{"creator", [{"type", "composer"}], [escape(score.composer)]}]},
+         {"identification", [], [{"creator", [{"type", "composer"}], [escape(score.composer)]}]},
          {"part-list", [], part_list(selected)},
          parts_xml(score, part_indices, selected)
        ]}
@@ -42,7 +41,11 @@ defmodule Dave.NFM.MusicXML do
   end
 
   defp part_list(selected) do
-    selected |> Enum.with_index() |> Enum.map(fn {%Part{} = part, j} -> i = j + 1
+    selected
+    |> Enum.with_index()
+    |> Enum.map(fn {%Part{} = part, j} ->
+      i = j + 1
+
       {"score-part", [{"id", "P#{i}"}],
        [
          {"part-name", [], [escape(part.name)]},
@@ -81,8 +84,8 @@ defmodule Dave.NFM.MusicXML do
           ]},
          clef_xml(m, part)
        ]},
-       direction_xml(score, m, part_index)
-     ]
+      direction_xml(score, m, part_index)
+    ]
   end
 
   defp clef_xml(%Measure{clef: nil}, %Part{}) do
@@ -163,8 +166,11 @@ defmodule Dave.NFM.MusicXML do
   end
 
   defp escape(s) do
-    s |> String.replace("&", "&amp;") |> String.replace("<", "&lt;")
-    |> String.replace(">", "&gt;") |> String.replace("\"", "&quot;")
+    s
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("\"", "&quot;")
   end
 
   defp render(node) when is_list(node), do: IO.iodata_to_binary(render_list(node))
