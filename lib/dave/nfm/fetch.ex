@@ -1,4 +1,6 @@
 defmodule Dave.NFM.Fetch do
+  require Logger
+
   @moduledoc """
   Fetching a score off a Noteflight Learning site, no login needed.
 
@@ -69,10 +71,25 @@ defmodule Dave.NFM.Fetch do
   def version(%{"score_latest_version" => %{"version_id" => v}}) when is_integer(v), do: v
   def version(_metadata), do: nil
 
+  # score_data is served only to a request that accepts JSON: with no
+  # Accept header (Req's default) the Learning host answers 404 with an
+  # HTML "Page Not Found", while curl's */* gets the JSON. Found when every
+  # imported row had a nil version.
   def fetch_metadata(host, id) do
-    case Req.get(url: "https://#{host}/score_data/#{id}") do
-      {:ok, %{status: 200, body: %{"score_data" => data}}} -> data
-      _ -> %{}
+    case Req.get(
+           url: "https://#{host}/score_data/#{id}",
+           headers: [{"accept", "application/json"}]
+         ) do
+      {:ok, %{status: 200, body: %{"score_data" => data}}} ->
+        data
+
+      other ->
+        Logger.warning(
+          "noteflight score_data for #{host}/#{id} unavailable, importing without a version: " <>
+            inspect(other, limit: 5, printable_limit: 120)
+        )
+
+        %{}
     end
   end
 
