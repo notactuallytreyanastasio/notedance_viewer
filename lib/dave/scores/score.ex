@@ -9,6 +9,8 @@ defmodule Dave.Scores.Score do
     field :noteflight_id, :string
     # the kids' address, two words like "sunny-fox"; set once, kept on re-import
     field :slug, :string
+    # the Noteflight version the raw NFMXML came from (nil for the example)
+    field :noteflight_version, :integer
     field :title, :string
     field :composer, :string
     field :beats, :integer
@@ -32,6 +34,7 @@ defmodule Dave.Scores.Score do
       :noteflight_host,
       :noteflight_id,
       :slug,
+      :noteflight_version,
       :title,
       :composer,
       :beats,

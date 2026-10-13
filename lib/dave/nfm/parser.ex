@@ -148,7 +148,7 @@ defmodule Dave.NFM.Parser do
     clef =
       case attributes_clef(children) do
         nil -> nil
-        c -> %{sign: text!(c, "sign"), line: text_to_int!(c, "line")}
+        c -> clef!(c)
       end
 
     voices =
@@ -259,6 +259,21 @@ defmodule Dave.NFM.Parser do
     notes
   end
 
+  # The clef's <note> names the pitch the sign marks (G4 for treble), and
+  # that pitch has one MusicXML line. NFMXML's own <line> is zero-based and
+  # is not trusted: see the moduledoc in Dave.NFM.
+  @clef_lines %{{"G", "G4"} => 2, {"F", "F3"} => 4, {"C", "C4"} => 3}
+
+  defp clef!(c) do
+    sign = text!(c, "sign")
+    note = text!(c, "note")
+
+    case Map.fetch(@clef_lines, {sign, note}) do
+      {:ok, line} -> %{sign: sign, line: line}
+      :error -> raise(ArgumentError, "TODO: clef #{sign} on #{note} in #{inspect(c)}")
+    end
+  end
+
   defp attributes_clef(children) do
     children
     |> all("attributes")
@@ -313,17 +328,33 @@ defmodule Dave.NFM.Parser do
     end
   end
 
-  # <lyric><text>C</text><color>#0x33BB33</color></lyric>; the text can be
-  # empty (Dave leaves a lyric slot on rests), which is no lyric at all.
+  # <lyric><text>C</text><color>#0x33BB33</color><direction>down</direction></lyric>;
+  # the text can be empty (Dave leaves a lyric slot on rests), which is no
+  # lyric at all. <direction> is where the lyric sits: down = below the staff.
   defp parse_lyric(nil), do: nil
 
   defp parse_lyric({"lyric", _, children} = node) do
-    assert_known_children!(node, children, ~w(text color))
+    assert_known_children!(node, children, ~w(text color direction))
+
+    placement =
+      case text(children, "direction") do
+        nil ->
+          nil
+
+        "down" ->
+          "below"
+
+        "up" ->
+          "above"
+
+        other ->
+          raise(ArgumentError, "TODO: lyric direction #{inspect(other)} in #{inspect(node)}")
+      end
 
     case text(children, "text") do
       nil -> nil
       "" -> nil
-      t -> %{text: t, color: color(text(children, "color"))}
+      t -> %{text: t, color: color(text(children, "color")), placement: placement}
     end
   end
 

@@ -22,6 +22,11 @@ defmodule Dave.NFM do
       measure (every observed tie sits at a measure's end).
     * A `<voice/>` with no noteSets is a whole-measure rest (Mandalorian's
       bells rest for 12 measures that way).
+    * `<clef><sign>G</sign><note>G4</note><line>1</line></clef>` counts
+      staff lines from ZERO. MusicXML counts from one, and a G clef on
+      MusicXML line 1 is the French violin clef: every note drew a third
+      low until the `<note>` (G4, the pitch the clef marks) was used to
+      place it instead of the line number.
   """
 
   defmodule Score do
@@ -61,7 +66,7 @@ defmodule Dave.NFM do
     # dotted: <dotted/> on the noteSet, length x1.5
     # tied: <tied/> on the note; the tie starts here (see moduledoc)
     # tie_stop: set by the parser on the note a tie lands on
-    # lyric: nil | %{text: "C", color: "#33BB33" | nil}
+    # lyric: nil | %{text: "C", color: "#33BB33" | nil, placement: "below" | "above" | nil}
     # measure_rest: a voice with no noteSets; value is nil, beats is the
     #   measure's length in quarter notes
     # beats: length in quarter notes, dot included (set by the parser)

@@ -23,7 +23,7 @@ defmodule Dave.Scores do
   def import_from_url(url) do
     {host, id} = Fetch.parse_url(url)
 
-    {xml, _meta} =
+    {xml, meta} =
       try do
         Fetch.fetch({host, id})
       rescue
@@ -39,7 +39,7 @@ defmodule Dave.Scores do
                   __STACKTRACE__
       end
 
-    import_xml(host, id, xml)
+    import_xml(host, id, xml, version: Fetch.version(meta))
   rescue
     e in ImportError ->
       reraise e, __STACKTRACE__
@@ -89,7 +89,7 @@ defmodule Dave.Scores do
   @doc """
   Import from already-fetched NFMXML (also the offline test path).
   """
-  def import_xml(host, id, xml) do
+  def import_xml(host, id, xml, opts \\ []) do
     score = Parser.parse(xml)
     timeline = Timeline.build(score)
     full_xml = MusicXML.to_music_xml(score)
@@ -104,6 +104,7 @@ defmodule Dave.Scores do
           noteflight_host: host,
           noteflight_id: id,
           slug: slug_for(host),
+          noteflight_version: Keyword.get(opts, :version),
           title: score.title,
           composer: score.composer,
           beats: score.beats,

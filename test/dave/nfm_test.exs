@@ -10,6 +10,7 @@ defmodule Dave.NFMTest do
   # 2026-10-13: letter-name lyrics, eighths, sixteenths, dots, ties, and
   # twelve empty measures for the bells.
   @mandalorian File.read!("test/support/fixtures/mandalorian.nfmxml")
+  @mandalorian_v16 File.read!("test/support/fixtures/mandalorian_v16.nfmxml")
   @baby_shark File.read!("test/support/fixtures/baby_shark.nfmxml")
 
   # The score the fixtures were taken from, fetched live while developing:
@@ -41,6 +42,31 @@ defmodule Dave.NFMTest do
           "  https://#{host}/scores/view/#{String.upcase(id)}\n"
         ] do
       assert Fetch.parse_url(url) == {host, id}, url
+    end
+  end
+
+  test "content_url: the latest version from score_data, never a fixed number" do
+    meta = %{
+      "score_contents_url" => "https://h.learning.noteflight.com/score_content/abc/55",
+      "score_latest_version" => %{"version_id" => 55}
+    }
+
+    assert Fetch.content_url("h.learning.noteflight.com", "abc", meta) =~
+             ~r|/score_content/abc/55$|
+
+    assert Fetch.version(meta) == 55
+
+    assert Fetch.content_url("h.learning.noteflight.com", "abc", %{}) ==
+             "https://h.learning.noteflight.com/score_content/abc"
+
+    assert Fetch.version(%{}) == nil
+  end
+
+  test "the treble clef lands on MusicXML line 2, not Noteflight's zero-based 1" do
+    for xml <- [@nfmxml, @mandalorian, @baby_shark] do
+      musicxml = MusicXML.to_music_xml(Parser.parse(xml))
+      assert musicxml =~ "<clef><sign>G</sign><line>2</line></clef>"
+      refute musicxml =~ "<line>1</line>"
     end
   end
 
@@ -140,18 +166,17 @@ defmodule Dave.NFMTest do
     assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
   end
 
-  test "mandalorian: letter lyrics, dotted eighths and sixteenths, bells resting whole measures" do
+  test "mandalorian v55: dotted eighths and sixteenths, bells resting whole measures, no lyrics" do
     score = Parser.parse(@mandalorian)
     [bells | _] = score.parts
     notes = for p <- score.parts, m <- p.measures, n <- m.notes, do: n
 
-    assert Enum.count(bells.measures, &match?([%{measure_rest: true}], &1.notes)) == 7
-    assert Enum.count(notes, & &1.measure_rest) == 12
+    assert Enum.count(bells.measures, &match?([%{measure_rest: true}], &1.notes)) == 6
+    assert Enum.count(notes, & &1.measure_rest) == 11
     assert Enum.count(notes, & &1.dotted) == 11
     assert Enum.count(notes, &(&1.value == 4.0)) == 26
-
-    lyric = notes |> Enum.find(& &1.lyric) |> Map.fetch!(:lyric)
-    assert lyric == %{text: "C", color: "#33BB33"}
+    # Dave's latest version dropped the letter lyrics (v16 still has them)
+    assert Enum.count(notes, & &1.lyric) == 0
     # a dotted eighth is 0.75 beats; a 16th 0.25
     assert Enum.find(notes, &(&1.dotted and &1.value == 5.0)).beats == 0.75
 
@@ -159,12 +184,32 @@ defmodule Dave.NFMTest do
     assert musicxml =~ ~s|<rest measure="yes"/><duration>192</duration>|
     assert musicxml =~ "<type>16th</type>"
     assert musicxml =~ "<type>eighth</type><dot/>"
+    assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
+  end
+
+  test "mandalorian v16: letter lyrics in Noteflight's #0x color spelling, placed when asked" do
+    notes = for p <- Parser.parse(@mandalorian_v16).parts, m <- p.measures, n <- m.notes, do: n
+    lyric = notes |> Enum.find(& &1.lyric) |> Map.fetch!(:lyric)
+    assert lyric == %{text: "C", color: "#33BB33", placement: nil}
+
+    musicxml = MusicXML.to_music_xml(Parser.parse(@mandalorian_v16), [0])
 
     assert musicxml =~
-             ~s|<lyric number="1" color="#33BB33"><syllabic>single</syllabic><text>E</text></lyric>|
+             ~s|<lyric number="1" color="#33BB33"><syllabic>single</syllabic><text>C</text></lyric>|
 
     refute musicxml =~ "#0x"
-    assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
+
+    # <direction>down</direction> inside a lyric is its placement
+    placed =
+      String.replace(
+        @mandalorian_v16,
+        "<lyric><text>C</text>",
+        "<lyric><text>C</text><direction>down</direction>",
+        global: false
+      )
+
+    assert MusicXML.to_music_xml(Parser.parse(placed), [0]) =~
+             ~s|<lyric number="1" color="#33BB33" placement="below">|
   end
 
   test "a note that is not where the previous one ended is refused, not drawn short" do

@@ -105,8 +105,8 @@ defmodule Dave.NFM.MusicXML do
   end
 
   defp clef_xml(%Measure{clef: nil}, %Part{}) do
-    # Xylophone parts with no explicit clef default to treble
-    {"clef", [], [{"sign", [], ["G"]}, {"line", [], ["1"]}]}
+    # Xylophone parts with no explicit clef default to treble: G on line 2
+    {"clef", [], [{"sign", [], ["G"]}, {"line", [], ["2"]}]}
   end
 
   defp clef_xml(%Measure{clef: clef}, %Part{}) do
@@ -191,7 +191,11 @@ defmodule Dave.NFM.MusicXML do
   defp lyric_xml(%Note{lyric: nil}), do: []
 
   defp lyric_xml(%Note{lyric: lyric}) do
-    attrs = [{"number", "1"}] ++ if(lyric.color, do: [{"color", lyric.color}], else: [])
+    attrs =
+      [{"number", "1"}] ++
+        if(lyric.color, do: [{"color", lyric.color}], else: []) ++
+        if(lyric[:placement], do: [{"placement", lyric.placement}], else: [])
+
     [{"lyric", attrs, [{"syllabic", [], ["single"]}, {"text", [], [escape(lyric.text)]}]}]
   end
 
