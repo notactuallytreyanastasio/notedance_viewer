@@ -141,8 +141,11 @@ export function labelNoteheads(osmd) {
             const hollow = note.sourceNote.Length.RealValue >= 0.5
             const r = head.getBoundingClientRect()
             const c = new DOMPoint(r.left + r.width / 2, r.top + r.height / 2).matrixTransform(toSvg)
-            // a notehead is one staff space tall; the disc spans two, like the reference
-            const radius = r.height * toSvg.a
+            // A notehead is one staff space tall, and so is the disc: it sits
+            // inside its space or on its line, where the head was. Spanning two
+            // spaces (the first version) covered the neighbouring lines and
+            // Dave could not see which space a note was in.
+            const radius = (r.height / 2) * toSvg.a
             layer.appendChild(disc(c.x, c.y, radius, color, hollow))
             layer.appendChild(letter(c.x, c.y, radius, label, hollow ? color : "#ffffff"))
           })
@@ -183,7 +186,10 @@ function letter(x, y, radius, label, color) {
   el.setAttribute("fill", color)
   el.setAttribute("text-anchor", "middle")
   el.setAttribute("dominant-baseline", "central")
-  el.setAttribute("font-size", radius * (label.length > 1 ? 1.1 : 1.45))
+  // Fredoka 700 caps are about 0.7em tall and wide; 1.6 radii keeps the
+  // letter inside the disc with a hair of margin (a 0.7em square fits a
+  // circle of radius 0.5em at font-size 2r, and 1.6r leaves the rim clear)
+  el.setAttribute("font-size", radius * (label.length > 1 ? 1.15 : 1.6))
   el.setAttribute("font-family", "Fredoka, system-ui, sans-serif")
   el.setAttribute("font-weight", "700")
   el.setAttribute("style", "pointer-events: none; user-select: none")

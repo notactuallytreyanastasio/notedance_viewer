@@ -176,7 +176,9 @@ button { cursor: pointer; touch-action: manipulation; }
   padding: 24px 16px 60vh;
 }
 .osmd {
-  max-width: 1100px; margin: 0 auto;
+  /* a 1080p TV at zoom 2.4 fits four 4/4 measures across 1800px; at the
+     old 1100px cap it fit two and left a third of the screen empty */
+  max-width: 1800px; margin: 0 auto;
   background: var(--sheet); border-radius: var(--radius-lg);
   box-shadow: var(--shadow); padding: 16px 8px;
   min-height: 200px;

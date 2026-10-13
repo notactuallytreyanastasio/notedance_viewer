@@ -30,8 +30,10 @@ export function initMaster(pageEl, channel) {
   // drawn score and the timeline before it can start walking
   const timelineLoaded = fetch(pageEl.dataset.timelineUrl).then((r) => r.json())
 
-  // bigger on a big screen: a 1080p TV at the back of a music room gets 1.4
-  const zoom = Math.min(1.5, Math.max(1.0, window.innerWidth / 1300))
+  // A staff space is 10px at zoom 1 and the letter discs are one space
+  // tall, so the staff has to be big for them to read across a room: a
+  // laptop (1280px) gets 1.6, a 1080p TV 2.4.
+  const zoom = Math.min(2.4, Math.max(1.6, window.innerWidth / 800))
 
   Promise.all([drawScore(osmdEl, pageEl.dataset.musicxmlUrl, zoom), timelineLoaded]).then(([osmd, tl]) => {
     loadingEl.classList.add("hidden")

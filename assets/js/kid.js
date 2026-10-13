@@ -74,9 +74,10 @@ export function initKid(pageEl, channel, session) {
       osmdEl.innerHTML = ""
       tracker = null
       loadingEl.classList.remove("hidden")
-      // big, but not one-measure-per-line on a portrait iPad (768px -> 1.1,
-      // landscape 1024px -> 1.4, a laptop -> 1.5)
-      const zoom = Math.min(1.5, Math.max(1.1, window.innerWidth / 720))
+      // Big enough that a one-space disc with a letter in it reads from a
+      // lap: a staff space is 10px at zoom 1, so this is 17-24px. A
+      // portrait iPad (768px) gets 1.7, landscape (1024px) 2.1, a laptop 2.4.
+      const zoom = Math.min(2.4, Math.max(1.7, window.innerWidth / 480))
       const osmd = await drawScore(osmdEl, `/${slug}/musicxml/${i}`, zoom)
       loadingEl.classList.add("hidden")
       tracker = noteTracker(osmd, part.notes)
