@@ -68,29 +68,62 @@ defmodule Dave.NFM.MusicXML do
   # signature wherever it finds one, so copying NFMXML's habit put a treble
   # clef and a 4/4 at the start of every bar. Here: everything in measure 1,
   # after that only a clef, and only when it differs from the bar before.
+  #
+  # A two-staff part (piano) writes staff 1's notes, a <backup> of the whole
+  # measure, then staff 2's, every note saying its <staff>. Voices are
+  # numbered 1-4 on staff 1 and 5-8 on staff 2, the MusicXML convention,
+  # so OSMD never merges the hands into one voice.
   defp measures_xml(%Score{} = score, %Part{} = part, part_index) do
-    {measures, _prev_clef} =
-      Enum.map_reduce(part.measures, nil, fn %Measure{} = m, prev_clef ->
-        clef = clef_xml(m, part)
+    by_index =
+      part.measures
+      |> Enum.group_by(& &1.index)
+      |> Enum.sort_by(fn {index, _} -> index end)
+
+    {measures, _prev_clefs} =
+      Enum.map_reduce(by_index, nil, fn {index, staff_measures}, prev_clefs ->
+        staff_measures = Enum.sort_by(staff_measures, & &1.staff)
+        clefs = Enum.map(staff_measures, &clef_xml(&1, part))
 
         attrs =
           cond do
-            m.index == 0 -> [first_attributes_xml(score, clef)]
-            clef != prev_clef -> [{"attributes", [], [clef]}]
-            true -> []
+            index == 0 ->
+              [first_attributes_xml(score, part, clefs)]
+
+            clefs != prev_clefs ->
+              changed =
+                Enum.zip(clefs, prev_clefs)
+                |> Enum.reject(fn {c, p} -> c == p end)
+                |> Enum.map(fn {c, _} -> c end)
+
+              [{"attributes", [], changed}]
+
+            true ->
+              []
           end
 
-        direction = direction_xml(score, m, part_index) |> List.wrap()
-        notes = Enum.map(m.notes, &note_xml/1)
+        direction = direction_xml(score, index, part_index) |> List.wrap()
 
-        {{"measure", [{"number", Integer.to_string(m.index + 1)}], attrs ++ direction ++ notes},
-         clef}
+        notes =
+          staff_measures
+          |> Enum.map(fn m -> Enum.map(m.notes, &note_xml(&1, part, m.staff)) end)
+          |> Enum.intersperse([backup_xml(score)])
+          |> List.flatten()
+
+        {{"measure", [{"number", Integer.to_string(index + 1)}], attrs ++ direction ++ notes},
+         clefs}
       end)
 
     measures
   end
 
-  defp first_attributes_xml(%Score{} = score, clef) do
+  defp backup_xml(%Score{} = score) do
+    {"backup", [], [{"duration", [], [Integer.to_string(measure_divisions(score))]}]}
+  end
+
+  defp measure_divisions(%Score{beats: beats, beat_type: beat_type}),
+    do: round(@divisions * beats * 4 / beat_type)
+
+  defp first_attributes_xml(%Score{} = score, %Part{staves: staves}, clefs) do
     {"attributes", [],
      [
        {"divisions", [], [Integer.to_string(@divisions)]},
@@ -100,22 +133,40 @@ defmodule Dave.NFM.MusicXML do
           {"beats", [], [Integer.to_string(score.beats)]},
           {"beat-type", [], [Integer.to_string(score.beat_type)]}
         ]},
-       clef
-     ]}
+       if(staves > 1, do: {"staves", [], [Integer.to_string(staves)]})
+     ]
+     |> Enum.reject(&is_nil/1)
+     |> Kernel.++(clefs)}
   end
 
-  defp clef_xml(%Measure{clef: nil}, %Part{}) do
+  defp clef_xml(%Measure{clef: nil} = m, %Part{} = part) do
     # Xylophone parts with no explicit clef default to treble: G on line 2
-    {"clef", [], [{"sign", [], ["G"]}, {"line", [], ["2"]}]}
+    {"clef", clef_number(m, part), [{"sign", [], ["G"]}, {"line", [], ["2"]}]}
   end
 
-  defp clef_xml(%Measure{clef: clef}, %Part{}) do
-    {"clef", [], [{"sign", [], [clef.sign]}, {"line", [], [Integer.to_string(clef.line)]}]}
+  defp clef_xml(%Measure{clef: clef} = m, %Part{} = part) do
+    {"clef", clef_number(m, part),
+     [{"sign", [], [clef.sign]}, {"line", [], [Integer.to_string(clef.line)]}]}
   end
 
-  # Tempo marking only once, in part 1's first measure: OSMD reads the
-  # <sound> for playback tempo and the metronome shows visually.
-  defp direction_xml(%Score{bpm: bpm}, %Measure{index: 0}, 0) do
+  defp clef_number(%Measure{staff: staff}, %Part{staves: staves}) when staves > 1,
+    do: [{"number", Integer.to_string(staff)}]
+
+  defp clef_number(_measure, _part), do: []
+
+  # Tempo markings in part 1 only, at the first measure and at every
+  # change (Score.tempos): OSMD reads the <sound> for playback tempo and
+  # the metronome shows visually.
+  defp direction_xml(%Score{tempos: tempos}, index, 0) do
+    case List.keyfind(tempos, index, 0) do
+      {^index, bpm} -> tempo_direction(bpm)
+      nil -> []
+    end
+  end
+
+  defp direction_xml(_score, _index, _part_index), do: []
+
+  defp tempo_direction(bpm) do
     bpm_str = Integer.to_string(round(bpm))
 
     {
@@ -141,18 +192,20 @@ defmodule Dave.NFM.MusicXML do
     }
   end
 
-  defp direction_xml(_score, _measure, _part_index), do: []
-
-  defp note_xml(%Note{measure_rest: true} = note) do
+  defp note_xml(%Note{measure_rest: true} = note, part, staff) do
     {"note", [],
      [
        {"rest", [{"measure", "yes"}], []},
        {"duration", [], [Integer.to_string(duration!(note))]},
-       {"voice", [], [Integer.to_string(note.voice)]}
-     ]}
+       {"voice", [], [voice_number(note, part, staff)]}
+     ]
+     |> Kernel.++(staff_xml(part, staff))}
   end
 
-  defp note_xml(%Note{} = note) do
+  # MusicXML's element order inside <note> is fixed: chord, pitch/rest,
+  # duration, tie, voice, type, dot, time-modification, staff, notations,
+  # lyric. OSMD ignores a time-modification placed after staff.
+  defp note_xml(%Note{} = note, part, staff) do
     attrs = if(note.color, do: [{"color", note.color}], else: [])
 
     children =
@@ -162,41 +215,94 @@ defmodule Dave.NFM.MusicXML do
         {"duration", [], [Integer.to_string(duration!(note))]},
         if(note.tie_stop, do: {"tie", [{"type", "stop"}], []}),
         if(note.tied, do: {"tie", [{"type", "start"}], []}),
-        {"voice", [], [Integer.to_string(note.voice)]}
+        {"voice", [], [voice_number(note, part, staff)]}
       ]
       |> Enum.reject(&is_nil/1)
       |> Kernel.++(note_type_xml(note))
       |> Kernel.++(if(note.dotted, do: [{"dot", [], []}], else: []))
-      |> Kernel.++(tied_notations(note))
-      |> Kernel.++(lyric_xml(note))
+      |> Kernel.++(accidental_xml(note))
+      |> Kernel.++(time_modification_xml(note))
+      |> Kernel.++(staff_xml(part, staff))
+      |> Kernel.++(notations_xml(note))
+      |> Kernel.++(lyrics_xml(note))
 
     {"note", attrs, children}
   end
 
-  defp tied_notations(%Note{tied: false, tie_stop: false}), do: []
+  # the staff is the Measure's, not the Note's, so it rides along as an argument
+  defp staff_xml(%Part{staves: staves}, staff) when staves > 1,
+    do: [{"staff", [], [Integer.to_string(staff)]}]
 
-  defp tied_notations(note) do
+  defp staff_xml(_part, _staff), do: []
+
+  defp voice_number(%Note{voice: voice}, %Part{staves: staves}, staff) when staves > 1,
+    do: Integer.to_string((staff - 1) * 4 + voice)
+
+  defp voice_number(%Note{voice: voice}, _part, _staff), do: Integer.to_string(voice)
+
+  # the mark Noteflight engraves, where it engraves it: MusicXML's names
+  # are the same words except for the doubles
+  @accidental_names %{
+    "sharp" => "sharp",
+    "flat" => "flat",
+    "natural" => "natural",
+    "doubleSharp" => "double-sharp",
+    "doubleFlat" => "flat-flat"
+  }
+
+  defp accidental_xml(%Note{pitch: %{accidental: acc}}) when is_binary(acc),
+    do: [{"accidental", [], [Map.fetch!(@accidental_names, acc)]}]
+
+  defp accidental_xml(_note), do: []
+
+  defp time_modification_xml(%Note{tuplet: nil}), do: []
+
+  defp time_modification_xml(%Note{tuplet: t}) do
     [
-      {"notations", [],
-       Enum.reject(
-         [
-           if(note.tie_stop, do: {"tied", [{"type", "stop"}], []}),
-           if(note.tied, do: {"tied", [{"type", "start"}], []})
-         ],
-         &is_nil/1
-       )}
+      {"time-modification", [],
+       [
+         {"actual-notes", [], [Integer.to_string(t.actual)]},
+         {"normal-notes", [], [Integer.to_string(t.normal)]}
+       ]}
     ]
   end
 
-  defp lyric_xml(%Note{lyric: nil}), do: []
+  defp notations_xml(%Note{} = note) do
+    items =
+      Enum.reject(
+        [
+          if(note.tie_stop, do: {"tied", [{"type", "stop"}], []}),
+          if(note.tied, do: {"tied", [{"type", "start"}], []}),
+          tuplet_notation(note, "start", note.tuplet && note.tuplet.start),
+          tuplet_notation(note, "stop", note.tuplet && note.tuplet.stop)
+        ],
+        &is_nil/1
+      )
 
-  defp lyric_xml(%Note{lyric: lyric}) do
-    attrs =
-      [{"number", "1"}] ++
-        if(lyric.color, do: [{"color", lyric.color}], else: []) ++
-        if(lyric[:placement], do: [{"placement", lyric.placement}], else: [])
+    if items == [], do: [], else: [{"notations", [], items}]
+  end
 
-    [{"lyric", attrs, [{"syllabic", [], ["single"]}, {"text", [], [escape(lyric.text)]}]}]
+  defp tuplet_notation(_note, _type, false), do: nil
+  defp tuplet_notation(_note, _type, nil), do: nil
+
+  defp tuplet_notation(%Note{tuplet: t}, type, true),
+    do: {"tuplet", [{"type", type}, {"bracket", if(t.bracket, do: "yes", else: "no")}], []}
+
+  defp lyrics_xml(%Note{lyrics: lyrics}) do
+    Enum.map(lyrics, fn lyric ->
+      attrs =
+        [{"number", Integer.to_string(lyric.number)}] ++
+          if(lyric.color, do: [{"color", lyric.color}], else: []) ++
+          if(lyric[:placement], do: [{"placement", lyric.placement}], else: [])
+
+      {"lyric", attrs,
+       [
+         {"syllabic", [], [lyric.syllabic]},
+         {"text", [], [escape(lyric.text)]},
+         if(lyric.extend, do: {"extend", [], []})
+       ]
+       |> Enum.reject(&is_nil/1)}
+    end)
   end
 
   defp note_body(%Note{pitch: nil}), do: {"rest", [], []}

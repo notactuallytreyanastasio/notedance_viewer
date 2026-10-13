@@ -45,7 +45,9 @@ export function initMaster(pageEl, channel) {
     .then((tl) => {
       timeline = tl
       measures = tl.measures
-      durationMs = measures.length * tl.measure_ms
+      // duration_ms sums the bars under each tempo; the product is the
+      // older timeline shape, before a score had a tempo change
+      durationMs = tl.duration_ms ?? measures.length * tl.measure_ms
       durationEl.textContent = formatTime(durationMs)
       for (const m of measures) {
         const btn = document.createElement("button")

@@ -22,6 +22,10 @@ defmodule Dave.Scores.Score do
     field :music_xml, :string
     # Dave.NFM.Timeline.build/1's output, as jsonb
     field :timeline, :map
+    # Dave.NFM's Score.warnings from the import that made this struct, for
+    # the flash: sentences about what the song has that is not followed
+    # (repeats). Not stored.
+    field :import_warnings, {:array, :string}, virtual: true, default: []
 
     has_many :parts, Dave.Scores.Part
 

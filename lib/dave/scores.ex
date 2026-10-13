@@ -148,8 +148,12 @@ defmodule Dave.Scores do
       score_row
     end)
     |> case do
-      {:ok, score_row} -> Repo.preload(score_row, parts: part_query())
-      {:error, reason} -> raise reason
+      {:ok, score_row} ->
+        if score.warnings != [], do: Logger.warning("#{score.title}: #{Enum.join(score.warnings, " ")}")
+        %{Repo.preload(score_row, parts: part_query()) | import_warnings: score.warnings}
+
+      {:error, reason} ->
+        raise reason
     end
   end
 

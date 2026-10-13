@@ -8,6 +8,7 @@ defmodule DaveWeb.ImportController do
       %Scores.Score{} = score ->
         conn
         |> put_flash(:info, "Imported “#{score.title}”. This is the TV view.")
+        |> put_warnings(score.import_warnings)
         |> redirect(to: "/#{score.slug}/tv")
 
       other ->
@@ -19,6 +20,10 @@ defmodule DaveWeb.ImportController do
       |> put_flash(:error, "Could not import that link: #{Exception.message(e)}")
       |> redirect(to: "/")
   end
+
+  # what the song has that DaveDance does not follow (repeats), from the parser
+  defp put_warnings(conn, []), do: conn
+  defp put_warnings(conn, warnings), do: put_flash(conn, :error, Enum.join(warnings, " "))
 
   # the bundled example song, for a first visit with no Noteflight link yet
   def example(conn, _params) do

@@ -83,5 +83,9 @@ icon, so kids can open it like an app.
 - Import says the score uses something DaveDance cannot read yet? Send
   Bobby the link. The reader is strict on purpose and learns one real
   score at a time.
+- Import says the song has a repeat, a segno or a coda it does not
+  follow? The song still comes in, but it plays every bar once, in
+  order, and the repeat signs are left off the page so the moving line
+  and the clock agree. Nine to Five and Twinkle Twinkle both say this.
 - A kid's strip says "Reconnecting to the TV"? The iPad lost wifi. It
   catches up by itself the moment it is back.

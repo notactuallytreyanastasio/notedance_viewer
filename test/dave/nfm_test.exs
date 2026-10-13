@@ -12,6 +12,13 @@ defmodule Dave.NFMTest do
   @mandalorian File.read!("test/support/fixtures/mandalorian.nfmxml")
   @mandalorian_v16 File.read!("test/support/fixtures/mandalorian_v16.nfmxml")
   @baby_shark File.read!("test/support/fixtures/baby_shark.nfmxml")
+  # The next batch, 2026-10-13 afternoon. Nine to Five is a different kind
+  # of score: a hidden Voice part with two verses of lyrics and a triplet,
+  # a two-staff Piano, a tempo change at bar 3, a segno, a coda, a repeat.
+  @twinkle File.read!("test/support/fixtures/twinkle.nfmxml")
+  @hot_cross_buns File.read!("test/support/fixtures/hot_cross_buns.nfmxml")
+  @nine_to_five File.read!("test/support/fixtures/nine_to_five.nfmxml")
+  @all_real [@nfmxml, @mandalorian, @baby_shark, @twinkle, @hot_cross_buns, @nine_to_five]
 
   # The score the fixtures were taken from, fetched live while developing:
   # Burlington Public Schools, "Mary Had a Little Lamb - Xylophone",
@@ -104,7 +111,7 @@ defmodule Dave.NFMTest do
       |> hd()
 
     assert note.value == 6.0
-    assert note.pitch == %{step: "D", alter: 0, octave: 5}
+    assert note.pitch == %{step: "D", alter: 0, octave: 5, accidental: nil}
     assert note.color == "#ff0000"
   end
 
@@ -131,7 +138,7 @@ defmodule Dave.NFMTest do
 
   test "every real score's measures add up: onsets equal the running sum of lengths" do
     # the parser raises otherwise, so parsing is the assertion
-    for xml <- [@nfmxml, @mandalorian, @baby_shark] do
+    for xml <- @all_real do
       score = Parser.parse(xml)
       timeline = Timeline.build(score)
       measures = length(hd(score.parts).measures)
@@ -143,9 +150,18 @@ defmodule Dave.NFMTest do
         |> Enum.map(& &1["end"])
         |> Enum.max()
 
-      # measure_ms is rounded once; the onsets are rounded per note
-      assert_in_delta last, 60_000 / score.bpm * 4 * measures, measures
+      # the last note of every part ends where the song ends; the onsets
+      # are rounded per note
+      assert_in_delta last, timeline["duration_ms"], measures, score.title
+      assert {:ok, _} = Saxy.SimpleForm.parse_string(MusicXML.to_music_xml(score))
     end
+  end
+
+  test "twinkle and hot cross buns: more xylophone parts, nothing new to read" do
+    assert Parser.parse(@twinkle).title == "Twinkle Twinkle Little Star"
+    assert length(Parser.parse(@twinkle).parts) == 5
+    assert Parser.parse(@hot_cross_buns).title == "Hot Cross Buns Xylophone"
+    assert length(Parser.parse(@hot_cross_buns).parts) == 3
   end
 
   test "baby shark: eighths and wholes, ties across the barline" do
@@ -171,12 +187,28 @@ defmodule Dave.NFMTest do
     [bells | _] = score.parts
     notes = for p <- score.parts, m <- p.measures, n <- m.notes, do: n
 
-    assert Enum.count(bells.measures, &match?([%{measure_rest: true}], &1.notes)) == 6
-    assert Enum.count(notes, & &1.measure_rest) == 11
+    # Was 6 until the reader learned tuplets: bar 12 of the bells is two
+    # quarter-note triplets, and a voice holding only <tuplet>s looked like
+    # an empty voice, i.e. a whole-measure rest. The live site drew that
+    # bar as silence for a day.
+    assert Enum.count(bells.measures, &match?([%{measure_rest: true}], &1.notes)) == 5
+    assert Enum.count(notes, & &1.measure_rest) == 8
     assert Enum.count(notes, & &1.dotted) == 11
     assert Enum.count(notes, &(&1.value == 4.0)) == 26
     # Dave's latest version dropped the letter lyrics (v16 still has them)
-    assert Enum.count(notes, & &1.lyric) == 0
+    assert Enum.count(notes, &(&1.lyrics != [])) == 0
+
+    # three quarters in the time of a half: 2/3 of a beat each, onsets at
+    # thirds of the half (0, 42.67, 85.33 of 64 per quarter)
+    triplets = Enum.filter(notes, & &1.tuplet)
+    assert length(triplets) == 18
+    [first, second | _] = triplets
+    assert first.tuplet == %{actual: 3, normal: 2, start: true, stop: false, bracket: true}
+    assert_in_delta first.beats, 2 / 3, 0.0001
+    assert_in_delta second.position, 42.667, 0.001
+    # the second triplet note is written B with a flat, sounding A#4
+    bb = Enum.find(triplets, &(&1.pitch.accidental == "flat"))
+    assert bb.pitch == %{step: "B", alter: -1, octave: 4, accidental: "flat"}
     # a dotted eighth is 0.75 beats; a 16th 0.25
     assert Enum.find(notes, &(&1.dotted and &1.value == 5.0)).beats == 0.75
 
@@ -184,13 +216,115 @@ defmodule Dave.NFMTest do
     assert musicxml =~ ~s|<rest measure="yes"/><duration>192</duration>|
     assert musicxml =~ "<type>16th</type>"
     assert musicxml =~ "<type>eighth</type><dot/>"
+
+    assert musicxml =~
+             ~s|<duration>32</duration><voice>1</voice><type>quarter</type>| <>
+               ~s|<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>| <>
+               ~s|<notations><tuplet type="start" bracket="yes"/></notations>|
+
+    assert musicxml =~ ~s|<alter>-1</alter><octave>4</octave>|
+    assert musicxml =~ "<accidental>flat</accidental>"
     assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
+  end
+
+  test "nine to five: a tempo change, a two-staff piano, verses, a hidden voice, a form it does not follow" do
+    score = Parser.parse(@nine_to_five)
+    assert score.bpm == 100.0
+    assert score.tempos == [{0, 100.0}, {2, 70.0}]
+
+    [voice, piano] = score.parts
+    assert voice.hidden and voice.staves == 1
+    assert piano.staves == 2 and not piano.hidden
+    assert length(piano.measures) == 76
+    assert Enum.count(piano.measures, &(&1.staff == 2)) == 38
+    assert Enum.at(piano.measures, 38).clef == %{sign: "F", line: 4}
+
+    # "Tum-ble out-ta bed" hyphenates; verse 2 is <line>1</line>
+    notes = for m <- voice.measures, n <- m.notes, do: n
+    tumble = Enum.find(notes, &Enum.any?(&1.lyrics, fn l -> l.text == "Tum" end))
+    assert [%{number: 1, text: "Tum", syllabic: "begin"}, %{number: 2, text: "let"}] = tumble.lyrics
+    assert Enum.any?(notes, &Enum.any?(&1.lyrics, fn l -> l.extend end))
+
+    # one sixteenth triplet in the voice, no bracket
+    [t1, _t2, t3] = Enum.filter(notes, & &1.tuplet)
+    assert t1.tuplet == %{actual: 3, normal: 2, start: true, stop: false, bracket: false}
+    assert t3.tuplet.stop
+    assert_in_delta t1.beats, 1 / 6, 0.0001
+
+    # a second Bb in a bar carries no mark, and the key's F# never does
+    assert Enum.any?(notes, &(&1.pitch && &1.pitch.alter == -1 && &1.pitch.accidental == nil))
+    all_notes = for p <- score.parts, m <- p.measures, n <- m.notes, do: n
+    assert Enum.any?(all_notes, &(&1.pitch && &1.pitch.step == "F" && &1.pitch.alter == 1))
+
+    [warning] = score.warnings
+    assert warning =~ "a repeat starting at bar 31"
+    assert warning =~ "a repeat ending at bar 38"
+    assert warning =~ "a segno at bar 5"
+    assert warning =~ "a coda at bar 31"
+    assert warning =~ "“To Coda” at bar 12"
+    assert warning =~ "“D.S. al Coda” at bar 30"
+    assert warning =~ "plays the bars once"
+
+    # two bars at 100 then 36 at 70
+    tl = Timeline.build(score)
+    assert tl["measure_ms"] == 2400
+    assert tl["duration_ms"] == round(2 * 2400 + 36 * 4 * 60_000 / 70)
+    assert Enum.at(tl["measures"], 2)["start_ms"] == 4800
+    assert Enum.at(tl["measures"], 3)["start_ms"] == round(4800 + 4 * 60_000 / 70)
+    # the piano's two hands come out as one time-ordered stream
+    piano_ms = Enum.map(tl["parts"]["1"]["notes"], & &1["ms"])
+    assert piano_ms == Enum.sort(piano_ms)
+
+    musicxml = MusicXML.to_music_xml(score)
+    assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
+    assert musicxml =~ ~s|<sound tempo="100"/>|
+    assert musicxml =~ ~s|<measure number="3"><direction placement="above">|
+    assert musicxml =~ ~s|<sound tempo="70"/>|
+    assert length(String.split(musicxml, "<sound tempo=")) - 1 == 2
+    assert musicxml =~ ~s|<staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef>|
+    assert musicxml =~ ~s|<backup><duration>192</duration></backup>|
+    assert musicxml =~ ~s|<voice>5</voice><type>eighth</type><staff>2</staff>|
+    assert musicxml =~ ~s|<lyric number="2" color="#3333ff" placement="below"><syllabic>single</syllabic><text>let</text></lyric>|
+    assert musicxml =~ ~s|<syllabic>begin</syllabic><text>Tum</text>|
+    assert musicxml =~ "<extend/>"
+    refute musicxml =~ "<repeat"
+  end
+
+  test "pitch: the written octave crosses the B/C seam, and a wrong mark raises" do
+    note = fn pitch, step, acc ->
+      "<noteSet><value>6</value><note><pitch>#{pitch}</pitch><step>#{step}</step>#{acc}</note></noteSet>"
+    end
+
+    one_note = fn xml ->
+      @nfmxml
+      |> String.replace(~r|<noteSet>.*?</noteSet>|s, xml, global: false)
+      |> Parser.parse()
+      |> then(fn s -> hd(hd(s.parts).measures).notes |> hd() |> Map.fetch!(:pitch) end)
+    end
+
+    # Cb4 sounds B3, written in octave 4; B#3 sounds C4, written in octave 3
+    assert one_note.(note.("B3", "C", "<accidental>flat</accidental>")) ==
+             %{step: "C", alter: -1, octave: 4, accidental: "flat"}
+
+    assert one_note.(note.("C4", "B", "")) == %{step: "B", alter: 1, octave: 3, accidental: nil}
+
+    assert_raise ArgumentError, ~r/TODO: accidental sharp/, fn ->
+      one_note.(note.("A#4", "B", "<accidental>sharp</accidental>"))
+    end
   end
 
   test "mandalorian v16: letter lyrics in Noteflight's #0x color spelling, placed when asked" do
     notes = for p <- Parser.parse(@mandalorian_v16).parts, m <- p.measures, n <- m.notes, do: n
-    lyric = notes |> Enum.find(& &1.lyric) |> Map.fetch!(:lyric)
-    assert lyric == %{text: "C", color: "#33BB33", placement: nil}
+    [lyric] = notes |> Enum.find(&(&1.lyrics != [])) |> Map.fetch!(:lyrics)
+
+    assert lyric == %{
+             number: 1,
+             text: "C",
+             color: "#33BB33",
+             placement: nil,
+             syllabic: "single",
+             extend: false
+           }
 
     musicxml = MusicXML.to_music_xml(Parser.parse(@mandalorian_v16), [0])
 

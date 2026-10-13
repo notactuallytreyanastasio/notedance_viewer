@@ -3,10 +3,14 @@ defmodule Dave.NFM.Parser do
   NFMXML (Noteflight native XML) into `Dave.NFM` structs.
 
   Strict on purpose: anything the parser has not met on a real classroom
-  score (tempo changes, unknown noteSet children, a note whose position
-  is not where the previous note ended) raises with the offending node,
-  per house style — a crash is a work item, a silent misparse is a hidden
-  bug.
+  score (unknown noteSet or voice children, a note whose position is not
+  where the previous note ended) raises with the offending node, per
+  house style — a crash is a work item, a silent misparse is a hidden bug.
+
+  Repeat barlines, segno, coda and performance texts are the one
+  exception: they are read and turned into `Score.warnings` sentences
+  rather than a raise, because the score still reads correctly straight
+  through, and the warning reaches Dave on the import flash.
 
   `<beam/>` is accepted and dropped: it is an empty marker whose meaning
   (start? member?) nothing confirms, and OSMD beams eighths itself with
@@ -25,8 +29,14 @@ defmodule Dave.NFM.Parser do
     "natural" => 0
   }
 
+  @step_semitones %{"C" => 0, "D" => 2, "E" => 4, "F" => 5, "G" => 7, "A" => 9, "B" => 11}
+
   @known_noteset_children ~w(value position color note beam dotted lyric)
-  @known_note_children ~w(pitch step noteHead accidental tied)
+  # explicitAccidental: the accidental is engraved even where the key makes
+  # it redundant; the pitch is the same, so it is accepted and dropped
+  @known_note_children ~w(pitch step noteHead accidental tied explicitAccidental)
+  @known_lyric_children ~w(text color direction continued line extend)
+  @known_tuplet_children ~w(position units unitValue rhythmUnits rhythmValue showBracket contents)
 
   def parse(xml) do
     {:ok, doc} = Saxy.SimpleForm.parse_string(xml)
@@ -36,7 +46,8 @@ defmodule Dave.NFM.Parser do
   defp parse_score({"noteflightScore", _, children} = doc) do
     {beats, beat_type} = time_signature!(children)
     {fifths, mode} = key_signature!(children)
-    {tempo_value, bpm} = tempo!(children)
+    tempos = tempos!(children)
+    [{0, bpm} | _] = tempos
 
     measure_beats = beats * 4 / beat_type
 
@@ -52,15 +63,60 @@ defmodule Dave.NFM.Parser do
       beat_type: beat_type,
       fifths: fifths,
       mode: mode,
-      bpm: bpm_quarter(tempo_value, bpm),
-      parts: parts
+      bpm: bpm,
+      tempos: tempos,
+      parts: parts,
+      warnings: form_warnings(children)
     }
+  end
+
+  # Repeats, segno and coda live in the systemPart's measures (barline
+  # kinds as measure children, the signs under <notations>); the texts that
+  # drive them ("To Coda", "D.S. al Coda") sit in a part's measure
+  # notations, Nine to Five's Voice. None of them is followed: the OSMD
+  # cursor and the clock both walk the score once, start to end, and the
+  # repeat barlines are not even engraved, so the page and the sound agree.
+  defp form_warnings(children) do
+    part_measures =
+      children
+      |> all("part")
+      |> Enum.flat_map(&all(&1, "staff"))
+      |> Enum.flat_map(&all(&1, "measure"))
+
+    marks =
+      (Enum.with_index(system_measures(children), 1) ++ Enum.with_index(part_measures, 1))
+      |> Enum.flat_map(fn {{"measure", _, mc}, bar} ->
+        notations = one(mc, "notations") |> then(&if(&1, do: kids(&1), else: []))
+
+        Enum.reject(
+          [
+            if(one(mc, "startRepeat"), do: "a repeat starting at bar #{bar}"),
+            if(one(mc, "endRepeat"), do: "a repeat ending at bar #{bar}"),
+            if(one(notations, "segno"), do: "a segno at bar #{bar}"),
+            if(one(notations, "coda"), do: "a coda at bar #{bar}")
+          ] ++
+            for({"performance", _, pc} <- notations, do: "“#{text(pc, "text")}” at bar #{bar}"),
+          &is_nil/1
+        )
+      end)
+      |> Enum.uniq()
+
+    case marks do
+      [] ->
+        []
+
+      marks ->
+        [
+          "This song has #{Enum.join(marks, ", ")}. DaveDance does not follow " <>
+            "repeats or jumps yet: it plays the bars once, in order, and the " <>
+            "repeat signs are left off the page so the line and the clock agree."
+        ]
+    end
   end
 
   # Time, key and tempo live in <systemPart>'s own staff of measures, not in
   # the parts. NFMXML duplicates the first measure's tempo into <notations>
-  # too; we read <attributes> only and dedupe, so a real mid-piece tempo
-  # change is what trips the raise.
+  # too; we read <attributes> only.
   defp time_signature!(children) do
     ts =
       children
@@ -87,24 +143,26 @@ defmodule Dave.NFM.Parser do
     end
   end
 
-  defp tempo!(children) do
+  # Every <tempo> in a systemPart measure's <attributes>, as
+  # [{measure_index, quarter_bpm}]. A tempo repeated unchanged is dropped;
+  # the first measure must carry one, or the timeline has no clock.
+  defp tempos!(children) do
     tempos =
       children
       |> system_measures()
-      |> Enum.flat_map(fn m -> all(m, "attributes") end)
-      |> Enum.flat_map(fn a -> all(a, "tempo") end)
-      |> Enum.map(fn t -> {text_to_num!(t, "value"), text_to_num!(t, "bpm")} end)
-      |> Enum.uniq()
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {m, i} ->
+        m
+        |> all("attributes")
+        |> Enum.flat_map(&all(&1, "tempo"))
+        |> Enum.map(fn t -> {i, bpm_quarter(text_to_num!(t, "value"), text_to_num!(t, "bpm"))} end)
+      end)
+      |> Enum.dedup_by(fn {_i, bpm} -> bpm end)
 
     case tempos do
-      [{value, bpm}] ->
-        {value, bpm}
-
-      [] ->
-        raise(ArgumentError, "no tempo in systemPart")
-
-      tempos ->
-        raise(ArgumentError, "TODO: mid-piece tempo changes: #{inspect(tempos)}")
+      [{0, _} | _] -> tempos
+      [] -> raise(ArgumentError, "no tempo in systemPart")
+      [{i, _} | _] -> raise(ArgumentError, "TODO: first tempo is at measure #{i + 1}, not 1")
     end
   end
 
@@ -126,22 +184,45 @@ defmodule Dave.NFM.Parser do
     end
   end
 
+  # A piano part has two <staff>s with the same number of measures. Ties
+  # resolve within a staff: a tie open at the end of the right hand must
+  # not land on the left hand's first bar. A clef is carried forward: the
+  # xylophone scores repeat it in every bar, Nine to Five's piano writes
+  # its bass clef once, in bar 1 (bar 2 drew a treble clef before this).
   defp parse_part({"part", _, children}, index, measure_beats) do
     staves = all(children, "staff")
 
     measures =
       staves
-      |> Enum.flat_map(&all(&1, "measure"))
-      |> with_index(&parse_measure(&1, &2, measure_beats))
-      |> resolve_ties()
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {staff, staff_no} ->
+        staff
+        |> all("measure")
+        |> with_index(&parse_measure(&1, &2, measure_beats))
+        |> Enum.map(&%{&1 | staff: staff_no})
+        |> carry_clefs()
+        |> resolve_ties()
+      end)
 
     %Part{
       nfm_id: text(children, "id") || "part-#{index}",
       name: text!(children, "name"),
       short_name: text(children, "shortName") || "",
       instrument_uri: text(children, "instrumentUri") || "",
-      measures: measures
+      measures: measures,
+      staves: length(staves),
+      hidden: one(children, "hidden") != nil
     }
+  end
+
+  defp carry_clefs(measures) do
+    {measures, _} =
+      Enum.map_reduce(measures, nil, fn m, prev ->
+        clef = m.clef || prev
+        {%{m | clef: clef}, clef}
+      end)
+
+    measures
   end
 
   defp parse_measure({"measure", _, children}, index, measure_beats) do
@@ -157,14 +238,12 @@ defmodule Dave.NFM.Parser do
       |> kids()
       |> all("voice")
       |> with_index(fn {"voice", _, voice_children}, voice ->
-        case all(voice_children, "noteSet") do
+        case voice_notes(voice_children, voice + 1) do
           [] ->
             [measure_rest(voice + 1, measure_beats)]
 
-          sets ->
-            sets
-            |> Enum.flat_map(&parse_note_set(&1, voice + 1))
-            |> check_positions!(index, measure_beats)
+          notes ->
+            check_positions!(notes, index, measure_beats)
         end
       end)
 
@@ -192,7 +271,9 @@ defmodule Dave.NFM.Parser do
       Enum.map_reduce(measures, MapSet.new(), fn measure, open ->
         {notes, open} =
           Enum.map_reduce(measure.notes, open, fn note, open ->
-            key = note.pitch
+            # the same sounding pitch, marked or not: a tied Bb is engraved
+            # with its flat in the first bar and bare in the next
+            key = note.pitch && Map.take(note.pitch, [:step, :alter, :octave])
             stop = key != nil and MapSet.member?(open, key)
             open = if stop, do: MapSet.delete(open, key), else: open
             open = if note.tied, do: MapSet.put(open, key), else: open
@@ -209,6 +290,66 @@ defmodule Dave.NFM.Parser do
     measures
   end
 
+  # A voice's children in document order: noteSets, tuplets (whose own
+  # noteSets take their place in the sequence), slurs (drawn, not timed:
+  # dropped) and <tacet/> (a silent voice, like an empty one). Anything
+  # else is unobserved and raises.
+  defp voice_notes(voice_children, voice) do
+    Enum.flat_map(voice_children, fn
+      {"noteSet", _, _} = set -> parse_note_set(set, voice)
+      {"tuplet", _, _} = tuplet -> parse_tuplet(tuplet, voice)
+      {"slur", _, _} -> []
+      {"tacet", _, _} -> []
+      {tag, _, _} = child -> raise(ArgumentError, "TODO: <#{tag}> in a voice, in #{inspect(child)}")
+    end)
+  end
+
+  # <tuplet><position>96</position><units>1</units><unitValue>5</unitValue>
+  #   <rhythmUnits>3</rhythmUnits><rhythmValue>4</rhythmValue>
+  #   <showBracket>false</showBracket><contents>…noteSets…</contents></tuplet>
+  # One eighth (units x unitValue) written as three 16ths (rhythmUnits x
+  # rhythmValue). The inner positions are in the written units, so a note's
+  # real onset is the tuplet's position plus its own scaled by real/written.
+  defp parse_tuplet({"tuplet", _, children} = node, voice) do
+    assert_known_children!(node, children, @known_tuplet_children)
+
+    position = text(children, "position") |> then(&if(&1, do: String.to_integer(&1), else: 0))
+    {_, unit_beats} = NFM.note_value(text_to_num!(node, "unitValue"))
+    {_, written_beats} = NFM.note_value(text_to_num!(node, "rhythmValue"))
+    real = text_to_int!(node, "units") * unit_beats
+    actual = text_to_int!(node, "rhythmUnits")
+    written = actual * written_beats
+    normal = real / written_beats
+
+    unless normal == trunc(normal) do
+      raise(ArgumentError, "TODO: tuplet of #{real} beats written as #{actual} x #{written_beats} in #{inspect(node)}")
+    end
+
+    bracket = text(children, "showBracket") != "false"
+    factor = real / written
+
+    sets =
+      children
+      |> one("contents")
+      |> kids()
+      |> all("noteSet")
+
+    last = length(sets) - 1
+
+    sets
+    |> with_index(fn set, i ->
+      tuplet = %{actual: actual, normal: trunc(normal), start: i == 0, stop: i == last, bracket: bracket}
+
+      set
+      |> parse_note_set(voice)
+      |> Enum.map(fn note ->
+        note = %{note | tuplet: tuplet, position: position + note.position * factor}
+        %{note | beats: NFM.beats(note)}
+      end)
+    end)
+    |> List.flatten()
+  end
+
   defp measure_rest(voice, measure_beats) do
     %Note{
       voice: voice,
@@ -222,19 +363,21 @@ defmodule Dave.NFM.Parser do
     }
   end
 
-  # Every onset must be where the previous note ended. True on all three
-  # real scores; a gap would mean an implicit rest NFMXML never writes, and
-  # we would rather stop than draw a measure short.
+  # Every onset must be where the previous note ended. True on every real
+  # score so far; a gap would mean an implicit rest NFMXML never writes,
+  # and we would rather stop than draw a measure short. Tuplet notes land
+  # on thirds of a unit (96, 106.67, 117.33), so the comparison allows a
+  # hundredth.
   defp check_positions!(notes, index, measure_beats) do
     unit = NFM.quarter_position()
 
     {_cursor, notes} =
-      Enum.reduce(notes, {0, []}, fn note, {cursor, acc} ->
+      Enum.reduce(notes, {0.0, []}, fn note, {cursor, acc} ->
         cond do
           note.chord ->
             {cursor, [note | acc]}
 
-          note.position != cursor ->
+          abs(note.position - cursor) > 0.01 ->
             raise(
               ArgumentError,
               "TODO: measure #{index + 1} note at position #{note.position}, " <>
@@ -242,17 +385,17 @@ defmodule Dave.NFM.Parser do
             )
 
           true ->
-            {cursor + round(note.beats * unit), [note | acc]}
+            {cursor + note.beats * unit, [note | acc]}
         end
       end)
 
     notes = Enum.reverse(notes)
-    last_end = List.last(notes) |> then(&(&1.position + round(&1.beats * unit)))
+    last_end = List.last(notes) |> then(&(&1.position + &1.beats * unit))
 
-    if last_end != round(measure_beats * unit) do
+    if abs(last_end - measure_beats * unit) > 0.01 do
       raise(
         ArgumentError,
-        "TODO: measure #{index + 1} ends at #{last_end}, expected #{round(measure_beats * unit)}"
+        "TODO: measure #{index + 1} ends at #{last_end}, expected #{measure_beats * unit}"
       )
     end
 
@@ -294,7 +437,7 @@ defmodule Dave.NFM.Parser do
 
     color = color(text(children, "color"))
     dotted = one(children, "dotted") != nil
-    lyric = parse_lyric(one(children, "lyric"))
+    lyrics = children |> all("lyric") |> Enum.map(&parse_lyric/1) |> Enum.reject(&is_nil/1)
 
     base = %Note{
       voice: voice,
@@ -304,7 +447,7 @@ defmodule Dave.NFM.Parser do
       color: color,
       chord: false,
       dotted: dotted,
-      lyric: lyric
+      lyrics: lyrics
     }
 
     base = %{base | beats: NFM.beats(base)}
@@ -316,13 +459,13 @@ defmodule Dave.NFM.Parser do
       note_children ->
         note_children
         |> with_index(fn {"note", _, nc} = n, i ->
-          # the lyric sits under the chord once, on its first note
+          # the lyrics sit under the chord once, on its first note
           %{
             base
             | pitch: parse_pitch(n),
               chord: i > 0,
               tied: one(nc, "tied") != nil,
-              lyric: if(i == 0, do: lyric, else: nil)
+              lyrics: if(i == 0, do: lyrics, else: [])
           }
         end)
     end
@@ -330,11 +473,12 @@ defmodule Dave.NFM.Parser do
 
   # <lyric><text>C</text><color>#0x33BB33</color><direction>down</direction></lyric>;
   # the text can be empty (Dave leaves a lyric slot on rests), which is no
-  # lyric at all. <direction> is where the lyric sits: down = below the staff.
-  defp parse_lyric(nil), do: nil
-
+  # lyric at all. <direction> is where the lyric sits: down = below the
+  # staff. <line>1</line> is the second verse (zero-based; absent for the
+  # first). <continued/> means a hyphen follows: the syllable goes on in
+  # the next note ("Tum-ble"). <extend/> is a melisma line after the word.
   defp parse_lyric({"lyric", _, children} = node) do
-    assert_known_children!(node, children, ~w(text color direction))
+    assert_known_children!(node, children, @known_lyric_children)
 
     placement =
       case text(children, "direction") do
@@ -352,9 +496,21 @@ defmodule Dave.NFM.Parser do
       end
 
     case text(children, "text") do
-      nil -> nil
-      "" -> nil
-      t -> %{text: t, color: color(text(children, "color")), placement: placement}
+      nil ->
+        nil
+
+      "" ->
+        nil
+
+      t ->
+        %{
+          number: (text(children, "line") || "0") |> String.to_integer() |> Kernel.+(1),
+          text: t,
+          color: color(text(children, "color")),
+          placement: placement,
+          syllabic: if(one(children, "continued"), do: "begin", else: "single"),
+          extend: one(children, "extend") != nil
+        }
     end
   end
 
@@ -364,6 +520,15 @@ defmodule Dave.NFM.Parser do
   defp color("#0x" <> hex), do: "#" <> hex
   defp color(c), do: c
 
+  # <note><pitch>A#4</pitch><step>B</step><accidental>flat</accidental></note>:
+  # <pitch> is the SOUNDING pitch, <step> the written letter, and
+  # <accidental> (plain text: flat, sharp, natural) is only the mark that is
+  # ENGRAVED. A second Bb in the same bar has step B, pitch A#4 and no
+  # accidental at all, and so does every F# in a one-sharp key: the
+  # alteration comes from the sounding pitch, never from the mark. Seen on
+  # Mandalorian's triplets and all over Nine to Five. The written octave is
+  # the sounding one except across the B/C seam (Cb4 sounds B3, B#3 sounds
+  # C4). An engraved mark that disagrees with the pitch raises.
   defp parse_pitch({"note", _, children} = node) do
     assert_known_children!(node, children, @known_note_children)
 
@@ -374,22 +539,61 @@ defmodule Dave.NFM.Parser do
       raise(ArgumentError, "unknown step: #{inspect(step)} in #{inspect(node)}")
     end
 
-    alter =
-      case all(children, "accidental") do
-        [] ->
-          0
+    [_, sounding_letter, sounding_alter, octave_str] =
+      Regex.run(~r/^([A-G])(#*|b*)(-?\d+)$/, name) ||
+        raise(ArgumentError, "TODO: pitch spelled #{inspect(name)} in #{inspect(node)}")
 
-        [a | _] ->
-          acc = text!(a, "type")
+    sounding_octave = String.to_integer(octave_str)
 
-          Map.fetch(@accidentals, acc) ||
-            raise(ArgumentError, "TODO: accidental #{inspect(acc)} in #{inspect(node)}")
+    octave =
+      case {step, sounding_letter} do
+        {"B", "C"} -> sounding_octave - 1
+        {"C", "B"} -> sounding_octave + 1
+        _ -> sounding_octave
       end
 
-    {octave, ""} = Integer.parse(String.replace_leading(name, step, ""))
+    sounding =
+      Map.fetch!(@step_semitones, sounding_letter) + semitones(sounding_alter) +
+        12 * sounding_octave
 
-    %{step: step, alter: alter, octave: octave}
+    alter = sounding - (Map.fetch!(@step_semitones, step) + 12 * octave)
+
+    if abs(alter) > 2 do
+      raise(
+        ArgumentError,
+        "TODO: <pitch>#{name}</pitch> is #{alter} semitones from step #{step}#{octave} in #{inspect(node)}"
+      )
+    end
+
+    accidental =
+      case all(children, "accidental") do
+        [] ->
+          nil
+
+        [{"accidental", _, acc_children} | _] ->
+          acc = texts(acc_children)
+
+          case Map.fetch(@accidentals, acc) do
+            {:ok, ^alter} ->
+              acc
+
+            {:ok, marked} ->
+              raise(
+                ArgumentError,
+                "TODO: accidental #{acc} (#{marked}) on a note that sounds #{alter} from its step in #{inspect(node)}"
+              )
+
+            :error ->
+              raise(ArgumentError, "TODO: accidental #{inspect(acc)} in #{inspect(node)}")
+          end
+      end
+
+    %{step: step, alter: alter, octave: octave, accidental: accidental}
   end
+
+  defp semitones("#" <> rest), do: 1 + semitones(rest)
+  defp semitones("b" <> rest), do: -1 + semitones(rest)
+  defp semitones(""), do: 0
 
   defp assert_known_children!(_node, children, known) do
     for {tag, _, _} = child <- children, tag not in known do

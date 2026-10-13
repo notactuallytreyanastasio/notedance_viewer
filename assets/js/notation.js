@@ -20,6 +20,12 @@ export async function drawScore(el, url, zoom) {
     autoBeam: true,
     zoom,
   })
+  // Lyrics at OSMD's default size (2 units) run into each other under
+  // sixteenth notes, and a verse of Nine to Five is all sixteenths; 1.4
+  // keeps every syllable apart. Must be set before load: the lyric labels
+  // take their font size when the sheet is built, not when it is drawn
+  // (changing it after load and re-rendering changed nothing, measured).
+  osmd.EngravingRules.LyricsHeight = 1.4
   await osmd.load(musicxml)
   // The constructor's `zoom` option is ignored by OSMD 2.2.1 (osmd.Zoom
   // stays 1 after construction, measured in headless Chromium); the
