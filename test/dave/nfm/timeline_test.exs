@@ -24,7 +24,7 @@ defmodule Dave.NFM.TimelineTest do
     # quarter at 90bpm = 667ms
     [first, second, _third, _fourth | _] = notes
 
-    assert first == %{"ms" => 0, "end" => 667, "midi" => 74, "m" => 0}
+    assert first == %{"ms" => 0, "lin" => 0, "end" => 667, "midi" => 74, "m" => 0}
     assert second["ms"] == 667
     # m1 ("had a lit-tle LAMB") is quarter quarter half — the half note is
     # overall note index 6, on beat 3 of the measure

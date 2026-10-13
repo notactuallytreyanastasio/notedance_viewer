@@ -48,6 +48,7 @@ defmodule Dave.NFM.Parser do
     {fifths, mode} = key_signature!(children)
     tempos = tempos!(children)
     [{0, bpm} | _] = tempos
+    form = form_marks(children)
 
     measure_beats = beats * 4 / beat_type
 
@@ -66,52 +67,75 @@ defmodule Dave.NFM.Parser do
       bpm: bpm,
       tempos: tempos,
       parts: parts,
-      warnings: form_warnings(children)
+      form: form,
+      barlines: barlines(children),
+      warnings: Enum.reject([NFM.Form.describe(form)], &is_nil/1)
     }
   end
 
   # Repeats, segno and coda live in the systemPart's measures (barline
   # kinds as measure children, the signs under <notations>); the texts that
   # drive them ("To Coda", "D.S. al Coda") sit in a part's measure
-  # notations, Nine to Five's Voice. None of them is followed: the OSMD
-  # cursor and the clock both walk the score once, start to end, and the
-  # repeat barlines are not even engraved, so the page and the sound agree.
-  defp form_warnings(children) do
+  # notations, Nine to Five's Voice. Dave.NFM.Form turns them into a
+  # playback order. A performance text we have not met raises.
+  @performance_texts %{
+    "To Coda" => :to_coda,
+    "D.S. al Coda" => :ds_al_coda,
+    "D.C. al Coda" => :dc_al_coda,
+    "D.S. al Fine" => :ds_al_fine,
+    "D.C. al Fine" => :dc_al_fine,
+    "D.S." => :ds,
+    "D.C." => :dc,
+    "Fine" => :fine
+  }
+
+  # <notations><barline><type>double</type><position>256</position></barline>
+  # on a systemPart measure; no <type> is the plain barline
+  defp barlines(children) do
+    children
+    |> system_measures()
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {{"measure", _, mc}, bar} ->
+      notations = one(mc, "notations") |> then(&if(&1, do: kids(&1), else: []))
+
+      case one(notations, "barline") do
+        nil -> []
+        b -> if(t = text(b, "type"), do: [{bar, t}], else: [])
+      end
+    end)
+    |> Map.new()
+  end
+
+  defp form_marks(children) do
     part_measures =
       children
       |> all("part")
       |> Enum.flat_map(&all(&1, "staff"))
-      |> Enum.flat_map(&all(&1, "measure"))
+      |> Enum.flat_map(fn staff -> staff |> all("measure") |> Enum.with_index(1) end)
 
-    marks =
-      (Enum.with_index(system_measures(children), 1) ++ Enum.with_index(part_measures, 1))
-      |> Enum.flat_map(fn {{"measure", _, mc}, bar} ->
-        notations = one(mc, "notations") |> then(&if(&1, do: kids(&1), else: []))
+    (Enum.with_index(system_measures(children), 1) ++ part_measures)
+    |> Enum.flat_map(fn {{"measure", _, mc}, bar} ->
+      notations = one(mc, "notations") |> then(&if(&1, do: kids(&1), else: []))
 
-        Enum.reject(
-          [
-            if(one(mc, "startRepeat"), do: "a repeat starting at bar #{bar}"),
-            if(one(mc, "endRepeat"), do: "a repeat ending at bar #{bar}"),
-            if(one(notations, "segno"), do: "a segno at bar #{bar}"),
-            if(one(notations, "coda"), do: "a coda at bar #{bar}")
-          ] ++
-            for({"performance", _, pc} <- notations, do: "“#{text(pc, "text")}” at bar #{bar}"),
-          &is_nil/1
-        )
-      end)
-      |> Enum.uniq()
-
-    case marks do
-      [] ->
-        []
-
-      marks ->
+      Enum.reject(
         [
-          "This song has #{Enum.join(marks, ", ")}. DaveDance does not follow " <>
-            "repeats or jumps yet: it plays the bars once, in order, and the " <>
-            "repeat signs are left off the page so the line and the clock agree."
-        ]
-    end
+          if(one(mc, "startRepeat"), do: :start_repeat),
+          if(one(mc, "endRepeat"), do: :end_repeat),
+          if(one(notations, "segno"), do: :segno),
+          if(one(notations, "coda"), do: :coda)
+        ] ++
+          for {"performance", _, pc} = node <- notations do
+            t = text(pc, "text") || ""
+
+            Map.get(@performance_texts, String.trim(t)) ||
+              raise(ArgumentError, "TODO: performance text #{inspect(t)} in #{inspect(node)}")
+          end,
+        &is_nil/1
+      )
+      |> Enum.map(&%{bar: bar, kind: &1})
+    end)
+    |> Enum.uniq()
+    |> Enum.sort_by(& &1.bar)
   end
 
   # Time, key and tempo live in <systemPart>'s own staff of measures, not in
@@ -232,6 +256,14 @@ defmodule Dave.NFM.Parser do
         c -> clef!(c)
       end
 
+    notations = one(children, "notations") |> then(&if(&1, do: kids(&1), else: []))
+
+    chords =
+      for {"chordSymbol", _, cc} <- notations do
+        position = text(cc, "position") |> then(&if(&1, do: String.to_integer(&1), else: 0))
+        %{position: position, chord: NFM.Chord.parse(text!(cc, "chord"))}
+      end
+
     voices =
       children
       |> one("voices")
@@ -249,11 +281,11 @@ defmodule Dave.NFM.Parser do
 
     case voices do
       [notes] ->
-        %Measure{index: index, clef: clef, notes: notes}
+        %Measure{index: index, clef: clef, notes: notes, chords: chords}
 
       [notes | rest] ->
         if Enum.all?(rest, &match?([%Note{measure_rest: true}], &1)),
-          do: %Measure{index: index, clef: clef, notes: notes},
+          do: %Measure{index: index, clef: clef, notes: notes, chords: chords},
           else:
             raise(
               ArgumentError,

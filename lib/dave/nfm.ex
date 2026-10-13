@@ -29,9 +29,16 @@ defmodule Dave.NFM do
       like an empty `<voice/>`.
     * `<hidden/>` on a part (Nine to Five's Voice) is kept and noted, not
       dropped: it holds the melody and every lyric.
-    * Repeat barlines, segno, coda and performance texts ("D.S. al Coda")
-      are read only to WARN: the timeline plays the score straight through
-      once, and so must the engraving, or the cursor and the clock part.
+    * Repeat barlines, segno and coda live in the systemPart's measures;
+      the texts that drive them ("To Coda", "D.S. al Coda") are
+      `<performance>` notations in a part's measures. `Score.form` lists
+      them by bar and `Dave.NFM.Form.unroll/2` turns them into the order
+      the bars are played. OSMD's own cursor would follow the repeat
+      barlines too, so `notation.js` empties its repetition list after
+      load and the timeline alone decides where the line goes.
+    * `<chordSymbol><chord>A7/C#</chord><position>160</position></chordSymbol>`
+      in a part measure's notations is a chord symbol at that onset
+      (position 0 when absent). `Dave.NFM.Chord` splits the text.
     * `position` is an onset inside the measure, 64 units per quarter
       (observed: 0, 64, 128, 192 across a 4/4 measure).
     * `<tied/>` on a note means the tie STARTS there and ends on the next
@@ -59,7 +66,12 @@ defmodule Dave.NFM do
       :parts,
       # [{measure_index, quarter_bpm}], first entry at measure 0; bpm is its bpm
       tempos: [],
-      # sentences for Dave about what the import does not follow (repeats)
+      # [%{bar: 31, kind: :start_repeat}, ...], 1-based bars; see Dave.NFM.Form
+      form: [],
+      # %{bar => "double" | "final"}: Noteflight's barline kinds, from the
+      # systemPart's measure notations (the parts' own notations have none)
+      barlines: %{},
+      # sentences for Dave about the import (the form it will follow)
       warnings: []
     ]
   end
@@ -72,7 +84,8 @@ defmodule Dave.NFM do
 
   defmodule Measure do
     @enforce_keys [:index, :clef, :notes]
-    defstruct [:index, :clef, :notes, staff: 1]
+    defstruct [:index, :clef, :notes, staff: 1, chords: []]
+    # chords: [%{position: 0, chord: Dave.NFM.Chord.parse/1 result}]
   end
 
   defmodule Note do

@@ -38,6 +38,7 @@ export function initMaster(pageEl, channel) {
   Promise.all([drawScore(osmdEl, pageEl.dataset.musicxmlUrl, zoom), timelineLoaded]).then(([osmd, tl]) => {
     loadingEl.classList.add("hidden")
     tracker = noteTracker(osmd, mergedOnsets(tl))
+    window.__tracker = tracker // for the headless checks in the scratchpad
     tracker.seekTo(clock.positionMs())
   })
 
@@ -131,7 +132,10 @@ export function initMaster(pageEl, channel) {
 
   function measureAt(pos) {
     let m = 0
-    for (let i = 0; i < measures.length; i++) if (measures[i].start_ms <= pos) m = i
+    // the bar being played: with repeats a bar starts more than once, so
+    // walk the playback order (older timelines have only first starts)
+    const steps = timeline?.playback ?? measures.map((x) => ({ m: x.i, start_ms: x.start_ms }))
+    for (let i = 0; i < steps.length; i++) if (steps[i].start_ms <= pos) m = steps[i].m
     return m
   }
 

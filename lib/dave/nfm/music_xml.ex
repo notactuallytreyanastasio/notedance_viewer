@@ -8,6 +8,17 @@ defmodule Dave.NFM.MusicXML do
 
   alias Dave.NFM.{Measure, Note, Part, Score}
 
+  @jump_words %{
+    to_coda: "To Coda",
+    ds_al_coda: "D.S. al Coda",
+    dc_al_coda: "D.C. al Coda",
+    ds_al_fine: "D.S. al Fine",
+    dc_al_fine: "D.C. al Fine",
+    ds: "D.S.",
+    dc: "D.C.",
+    fine: "Fine"
+  }
+
   @divisions 48
 
   # NFMXML value is an enum (6 = quarter, 7 = half; see Dave.NFM). The type
@@ -58,8 +69,10 @@ defmodule Dave.NFM.MusicXML do
     part_indices
     |> Enum.zip(selected)
     |> Enum.with_index()
-    |> Enum.map(fn {{idx, %Part{} = part}, j} ->
-      {"part", [{"id", "P#{j + 1}"}], measures_xml(score, part, idx)}
+    |> Enum.map(fn {{_idx, %Part{} = part}, j} ->
+      # j is the part's place on THIS page: tempo and form marks go above
+      # the top staff of whatever is rendered, the piano's on its own page
+      {"part", [{"id", "P#{j + 1}"}], measures_xml(score, part, j)}
     end)
   end
 
@@ -73,6 +86,11 @@ defmodule Dave.NFM.MusicXML do
   # measure, then staff 2's, every note saying its <staff>. Voices are
   # numbered 1-4 on staff 1 and 5-8 on staff 2, the MusicXML convention,
   # so OSMD never merges the hands into one voice.
+  #
+  # Repeat barlines, segno, coda and the jump words are engraved from
+  # Score.form so the page shows what the clock follows; OSMD's own cursor
+  # would follow the repeat barlines too, which is why notation.js empties
+  # its repetition list after load (see Dave.NFM.Form).
   defp measures_xml(%Score{} = score, %Part{} = part, part_index) do
     by_index =
       part.measures
@@ -101,20 +119,141 @@ defmodule Dave.NFM.MusicXML do
               []
           end
 
+        marks = if(part_index == 0, do: Enum.filter(score.form, &(&1.bar == index + 1)), else: [])
         direction = direction_xml(score, index, part_index) |> List.wrap()
 
         notes =
           staff_measures
-          |> Enum.map(fn m -> Enum.map(m.notes, &note_xml(&1, part, m.staff)) end)
+          |> Enum.map(fn m -> notes_with_harmony(m, part) end)
           |> Enum.intersperse([backup_xml(score)])
           |> List.flatten()
 
-        {{"measure", [{"number", Integer.to_string(index + 1)}], attrs ++ direction ++ notes},
-         clefs}
+        content =
+          left_barline(marks) ++
+            attrs ++
+            direction ++
+            sign_directions(marks) ++
+            notes ++ jump_directions(marks) ++ right_barline(marks, score.barlines[index + 1])
+
+        {{"measure", [{"number", Integer.to_string(index + 1)}], content}, clefs}
       end)
 
     measures
   end
+
+  # <harmony> sits before the note it is played on; a chord symbol at an
+  # onset with no note of its own (rare) lands before the next note after it
+  defp notes_with_harmony(%Measure{notes: notes, chords: chords, staff: staff}, part) do
+    {xml, left} =
+      Enum.flat_map_reduce(notes, Enum.sort_by(chords, & &1.position), fn note, pending ->
+        {due, rest} =
+          if note.chord,
+            do: {[], pending},
+            else: Enum.split_while(pending, &(&1.position <= note.position + 0.01))
+
+        {Enum.map(due, &harmony_xml/1) ++ [note_xml(note, part, staff)], rest}
+      end)
+
+    xml ++ Enum.map(left, &harmony_xml/1)
+  end
+
+  defp harmony_xml(%{chord: chord}) do
+    {root_step, root_alter} = chord.root
+
+    {"harmony", [],
+     [
+       {"root", [],
+        [{"root-step", [], [root_step]}] ++
+          if(root_alter != 0, do: [{"root-alter", [], [Integer.to_string(root_alter)]}], else: [])},
+       {"kind", [], [chord.kind]}
+     ] ++
+       case chord.bass do
+         nil ->
+           []
+
+         {bass_step, bass_alter} ->
+           [
+             {"bass", [],
+              [{"bass-step", [], [bass_step]}] ++
+                if(bass_alter != 0, do: [{"bass-alter", [], [Integer.to_string(bass_alter)]}], else: [])}
+           ]
+       end}
+  end
+
+  defp left_barline(marks) do
+    if Enum.any?(marks, &(&1.kind == :start_repeat)),
+      do: [
+        {"barline", [{"location", "left"}],
+         [{"bar-style", [], ["heavy-light"]}, {"repeat", [{"direction", "forward"}], []}]}
+      ],
+      else: []
+  end
+
+  # Noteflight's own barline type (double, final) and the repeat's end
+  defp right_barline(marks, type) do
+    ending = Enum.any?(marks, &(&1.kind == :end_repeat))
+
+    style =
+      cond do
+        ending or type == "final" -> "light-heavy"
+        type == "double" -> "light-light"
+        true -> nil
+      end
+
+    case {style, ending} do
+      {nil, false} ->
+        []
+
+      {style, false} ->
+        [{"barline", [{"location", "right"}], [{"bar-style", [], [style]}]}]
+
+      {style, true} ->
+        [
+          {"barline", [{"location", "right"}],
+           [{"bar-style", [], [style]}, {"repeat", [{"direction", "backward"}], []}]}
+        ]
+    end
+  end
+
+  # Segno and coda as MusicXML's own elements at the start of the bar, the
+  # jump words as <words> at its end, each with the matching <sound>
+  # attribute. OSMD reads these as repetition instructions and VexFlow
+  # engraves the real signs (segno, "Coda" with the coda sign, "D.S. al"
+  # with the sign); the Unicode signs in plain <words> came out as boxes,
+  # the page's fonts lack them (both measured in headless Chromium).
+  defp sign_directions(marks) do
+    Enum.flat_map(marks, fn
+      %{kind: :segno} -> [direction({"segno", [], []}, [{"segno", "segno"}])]
+      %{kind: :coda} -> [direction({"coda", [], []}, [{"coda", "coda"}])]
+      _ -> []
+    end)
+  end
+
+  @jump_sounds %{
+    to_coda: [{"tocoda", "coda"}],
+    ds_al_coda: [{"dalsegno", "segno"}],
+    dc_al_coda: [{"dacapo", "yes"}],
+    ds_al_fine: [{"dalsegno", "segno"}],
+    dc_al_fine: [{"dacapo", "yes"}],
+    ds: [{"dalsegno", "segno"}],
+    dc: [{"dacapo", "yes"}],
+    fine: [{"fine", "yes"}]
+  }
+
+  defp jump_directions(marks) do
+    Enum.flat_map(marks, fn
+      %{kind: kind} when is_map_key(@jump_words, kind) ->
+        [direction({"words", [], [@jump_words[kind]]}, @jump_sounds[kind])]
+
+      _ ->
+        []
+    end)
+  end
+
+  defp direction(type, sound_attrs),
+    do:
+      {"direction", [{"placement", "above"}],
+       [{"direction-type", [], [type]}, {"sound", sound_attrs, []}]}
 
   defp backup_xml(%Score{} = score) do
     {"backup", [], [{"duration", [], [Integer.to_string(measure_divisions(score))]}]}

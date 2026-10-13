@@ -256,24 +256,36 @@ defmodule Dave.NFMTest do
     all_notes = for p <- score.parts, m <- p.measures, n <- m.notes, do: n
     assert Enum.any?(all_notes, &(&1.pitch && &1.pitch.step == "F" && &1.pitch.alter == 1))
 
-    [warning] = score.warnings
-    assert warning =~ "a repeat starting at bar 31"
-    assert warning =~ "a repeat ending at bar 38"
-    assert warning =~ "a segno at bar 5"
-    assert warning =~ "a coda at bar 31"
-    assert warning =~ "“To Coda” at bar 12"
-    assert warning =~ "“D.S. al Coda” at bar 30"
-    assert warning =~ "plays the bars once"
+    assert score.form == [
+             %{bar: 5, kind: :segno},
+             %{bar: 12, kind: :to_coda},
+             %{bar: 30, kind: :ds_al_coda},
+             %{bar: 31, kind: :start_repeat},
+             %{bar: 31, kind: :coda},
+             %{bar: 38, kind: :end_repeat}
+           ]
 
-    # two bars at 100 then 36 at 70
+    [warning] = score.warnings
+    assert warning =~ "“D.S. al Coda” at bar 30"
+    assert warning =~ "the line and the clock follow them"
+
+    # 1-30, D.S. to 5-12, To Coda to 31-38, repeated: 54 bars; two at 100, the rest at 70
     tl = Timeline.build(score)
     assert tl["measure_ms"] == 2400
-    assert tl["duration_ms"] == round(2 * 2400 + 36 * 4 * 60_000 / 70)
+    assert length(tl["playback"]) == 54
+    assert Enum.map(tl["playback"], & &1["m"]) |> Enum.slice(28, 4) == [28, 29, 4, 5]
+    assert tl["duration_ms"] == round(2 * 2400 + 52 * 4 * 60_000 / 70)
     assert Enum.at(tl["measures"], 2)["start_ms"] == 4800
     assert Enum.at(tl["measures"], 3)["start_ms"] == round(4800 + 4 * 60_000 / 70)
     # the piano's two hands come out as one time-ordered stream
     piano_ms = Enum.map(tl["parts"]["1"]["notes"], & &1["ms"])
     assert piano_ms == Enum.sort(piano_ms)
+    # a bar played twice has its notes twice, at two ms but one lin
+    bar31 = Enum.filter(tl["parts"]["0"]["notes"], &(&1["m"] == 30))
+    assert length(bar31) == 2 * Enum.count(voice.measures, &(&1.index == 30)) * length(Enum.at(voice.measures, 30).notes)
+    assert bar31 |> Enum.map(& &1["lin"]) |> Enum.uniq() |> length() == div(length(bar31), 2)
+    # the voice's chord symbols
+    assert Enum.at(voice.measures, 18).chords |> Enum.map(& &1.chord.text) == ["A", "Bm", "Cm6", "A7/C#"]
 
     musicxml = MusicXML.to_music_xml(score)
     assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
@@ -287,7 +299,35 @@ defmodule Dave.NFMTest do
     assert musicxml =~ ~s|<lyric number="2" color="#3333ff" placement="below"><syllabic>single</syllabic><text>let</text></lyric>|
     assert musicxml =~ ~s|<syllabic>begin</syllabic><text>Tum</text>|
     assert musicxml =~ "<extend/>"
-    refute musicxml =~ "<repeat"
+
+    # the form, engraved on the first rendered part only
+    assert musicxml =~ ~s|<measure number="31"><barline location="left"><bar-style>heavy-light</bar-style><repeat direction="forward"/></barline>|
+    assert musicxml =~ ~s|<bar-style>light-heavy</bar-style><repeat direction="backward"/></barline></measure></part>|
+    assert musicxml =~ ~s|<direction placement="above"><direction-type><segno/></direction-type><sound segno="segno"/></direction>|
+    assert musicxml =~ ~s|<direction-type><coda/></direction-type><sound coda="coda"/>|
+    # the jump words sit at the END of their bar, after the notes
+    assert musicxml =~ ~s|<words>D.S. al Coda</words></direction-type><sound dalsegno="segno"/></direction><barline location="right"><bar-style>light-light</bar-style></barline></measure><measure number="31">|
+    assert musicxml =~ ~s|<words>To Coda</words></direction-type><sound tocoda="coda"/>|
+    assert score.barlines == %{4 => "double", 12 => "double", 30 => "double", 38 => "final"}
+    assert musicxml =~ ~s|<bar-style>light-light</bar-style></barline></measure><measure number="5">|
+    assert length(String.split(musicxml, "<segno/>")) - 1 == 1
+    # chord symbols: A7/C# at bar 19, beat 3.5
+    assert musicxml =~ ~s|<harmony><root><root-step>A</root-step></root><kind>dominant</kind><bass><bass-step>C</bass-step><bass-alter>1</bass-alter></bass></harmony>|
+    assert musicxml =~ ~s|<harmony><root><root-step>A</root-step></root><kind>half-diminished</kind></harmony>|
+    # the piano on its own page gets the tempo and the form above its staff
+    piano_xml = MusicXML.to_music_xml(score, [1])
+    assert piano_xml =~ ~s|<sound tempo="70"/>|
+    assert piano_xml =~ "<segno/>"
+    refute piano_xml =~ "<harmony>"
+  end
+
+  test "twinkle: an end repeat with no start plays the whole song twice" do
+    score = Parser.parse(@twinkle)
+    assert score.form == [%{bar: 13, kind: :end_repeat}]
+    tl = Timeline.build(score)
+    assert length(tl["playback"]) == 26
+    assert tl["duration_ms"] == 2 * 13 * tl["measure_ms"]
+    assert MusicXML.to_music_xml(score, [0]) =~ ~s|<repeat direction="backward"/>|
   end
 
   test "pitch: the written octave crosses the B/C seam, and a wrong mark raises" do

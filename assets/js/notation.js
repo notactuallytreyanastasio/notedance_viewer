@@ -27,6 +27,12 @@ export async function drawScore(el, url, zoom) {
   // (changing it after load and re-rendering changed nothing, measured).
   osmd.EngravingRules.LyricsHeight = 1.4
   await osmd.load(musicxml)
+  // The repeat barlines are engraved, and OSMD's cursor would follow
+  // them by itself (465 stops on Nine to Five instead of 311, measured).
+  // The timeline already unrolls repeats and jumps, so the cursor must
+  // walk the page once, straight through: emptying OSMD's repetition
+  // list after load does exactly that and the barlines still draw.
+  osmd.Sheet.Repetitions.length = 0
   // The constructor's `zoom` option is ignored by OSMD 2.2.1 (osmd.Zoom
   // stays 1 after construction, measured in headless Chromium); the
   // setter before render() is what scales the engraving.
@@ -47,29 +53,32 @@ export async function drawScore(el, url, zoom) {
 }
 
 // Advance the OSMD cursor to the latest onset at or before `ms`.
-// `onsets` are {ms} in document order: a part's notes for the kid page, or
-// every distinct onset across all parts for the TV, which is the order
-// OSMD's cursor walks the score (cursor.next() steps to the next distinct
-// timestamp across every staff). After reset() the cursor is already ON
-// the first onset, so the walk starts at 0, not before it; starting at -1
-// put the line on the second note at time zero.
+// `onsets` are {ms, lin}: a part's notes for the kid page, or every onset
+// across all parts for the TV. `ms` is the clock with repeats and jumps
+// unrolled; `lin` is the same onset on a straight read of the page, which
+// is what the cursor walks (cursor.next() steps to the next distinct
+// timestamp across every staff). So the cursor step for an onset is the
+// rank of its `lin` among all distinct `lin`s, and when the song jumps
+// back (a repeat, a D.S.) the step goes down: reset and walk forward.
+// After reset() the cursor is already ON step 0.
 export function noteTracker(osmd, allOnsets) {
-  // One stop per distinct time: a chord is several notes at one onset, and
-  // the cursor stops there once. Mandalorian's xylophone part is all
-  // octave chords; counted per note, its cursor ran ahead at twice speed.
-  const onsets = distinctByMs(allOnsets)
+  const lins = [...new Set(allOnsets.map(linOf))].sort((a, b) => a - b)
+  const stepOf = new Map(lins.map((lin, i) => [lin, i]))
+  // One stop per distinct time: a chord is several notes at one onset.
+  const onsets = distinctByMs(allOnsets).sort((a, b) => a.ms - b.ms)
   let idx = 0 // onsets[idx] is the first onset still in the future
-  let at = 0 // the onset the cursor is on
+  let at = 0 // the cursor's current step
 
   function seekTo(ms) {
-    if (idx > 0 && ms < onsets[idx - 1].ms) {
-      osmd.cursor.reset()
-      idx = 0
-      at = 0
-    }
+    if (idx > 0 && ms < onsets[idx - 1].ms) idx = 0
     while (idx < onsets.length && onsets[idx].ms <= ms) idx++
-    const target = Math.max(0, idx - 1)
+    const target = stepOf.get(linOf(onsets[Math.max(0, idx - 1)]))
     let moved = false
+    if (target < at) {
+      osmd.cursor.reset()
+      at = 0
+      moved = true
+    }
     while (at < target) {
       osmd.cursor.next()
       at++
@@ -81,6 +90,11 @@ export function noteTracker(osmd, allOnsets) {
   return { seekTo }
 }
 
+// a timeline stored before repeats were followed has no lin: it is ms
+function linOf(onset) {
+  return onset.lin ?? onset.ms
+}
+
 function distinctByMs(onsets) {
   const seen = new Set()
   return onsets.filter((o) => (seen.has(o.ms) ? false : (seen.add(o.ms), true)))
@@ -88,11 +102,11 @@ function distinctByMs(onsets) {
 
 // Every distinct onset across all parts, sorted: the TV's walk order.
 export function mergedOnsets(timeline) {
-  const seen = new Set()
+  const seen = new Map()
   for (const key of Object.keys(timeline.parts)) {
-    for (const n of timeline.parts[key].notes) seen.add(n.ms)
+    for (const n of timeline.parts[key].notes) if (!seen.has(n.ms)) seen.set(n.ms, { ms: n.ms, lin: linOf(n) })
   }
-  return [...seen].sort((a, b) => a - b).map((ms) => ({ ms }))
+  return [...seen.values()].sort((a, b) => a.ms - b.ms)
 }
 
 function keepCursorVisible() {

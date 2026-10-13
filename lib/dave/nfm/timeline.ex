@@ -8,7 +8,14 @@ defmodule Dave.NFM.Timeline do
   changes the length of every bar from there on, so bar starts are summed
   bar by bar rather than multiplied. `measure_ms` stays as the FIRST
   tempo's bar length for the older pages; `duration_ms` is the real end.
-  Repeats are not followed: the bars play once, in order, like the cursor.
+
+  Repeats and jumps (`Score.form`) are unrolled by `Dave.NFM.Form`: a
+  bar played twice has its notes twice, at two `ms`. Every note also
+  carries `lin`, its onset on a straight read-through, which is the
+  clock the OSMD cursor walks: the pages map `ms` to `lin` to the
+  cursor step, and jump the cursor back when `lin` goes backwards.
+  `playback` is the bar order with starts; `measures` keeps each bar's
+  first start for the TV's "start from" buttons.
   """
 
   alias Dave.NFM
@@ -25,36 +32,51 @@ defmodule Dave.NFM.Timeline do
       |> Enum.max()
       |> Kernel.+(1)
 
-    # {start_ms, ms_per_quarter} per measure, under the tempo in force there
-    {clocks, duration_ms} =
-      Enum.map_reduce(0..(measure_count - 1)//1, 0.0, fn i, start ->
-        ms_per_quarter = 60_000.0 / tempo_at(score, i)
-        {{start, ms_per_quarter}, start + quarters_per_measure * ms_per_quarter}
-      end)
+    ms_per_quarter = fn i -> 60_000.0 / tempo_at(score, i) end
+    bar_ms = fn i -> quarters_per_measure * ms_per_quarter.(i) end
 
-    clocks = List.to_tuple(clocks)
+    # a straight read-through: where each bar sits on the page's own clock
+    {linear_starts, _} =
+      Enum.map_reduce(0..(measure_count - 1)//1, 0.0, fn i, start -> {start, start + bar_ms.(i)} end)
+
+    linear_starts = List.to_tuple(linear_starts)
+
+    # the order the bars are played, with repeats and jumps unrolled
+    order = NFM.Form.unroll(score.form, measure_count)
+
+    {playback, duration_ms} =
+      Enum.map_reduce(order, 0.0, fn i, start -> {{i, start}, start + bar_ms.(i)} end)
+
+    # the first time each bar is played, for the TV's "start from" buttons
+    first_pass =
+      Enum.reduce(playback, %{}, fn {i, start}, acc -> Map.put_new(acc, i, start) end)
 
     measures =
       for i <- 0..(measure_count - 1)//1 do
-        {start, _} = elem(clocks, i)
-        %{"i" => i, "start_ms" => round(start)}
+        %{"i" => i, "start_ms" => round(Map.fetch!(first_pass, i))}
       end
 
     parts =
       score.parts
       |> Enum.with_index()
       |> Map.new(fn {part, idx} ->
+        by_index = Enum.group_by(part.measures, & &1.index)
+
         notes =
-          for m <- part.measures, n <- m.notes do
-            {start, ms_per_quarter} = elem(clocks, m.index)
-            onset = start + n.position / NFM.quarter_position() * ms_per_quarter
+          for {i, start} <- playback,
+              m <- Map.get(by_index, i, []),
+              n <- m.notes do
+            mpq = ms_per_quarter.(i)
+            offset = n.position / NFM.quarter_position() * mpq
             beats = NFM.beats(n)
 
             %{
-              "ms" => round(onset),
-              "end" => round(onset + beats * ms_per_quarter),
+              "ms" => round(start + offset),
+              # the same onset on a straight read: the cursor's own clock
+              "lin" => round(elem(linear_starts, i) + offset),
+              "end" => round(start + offset + beats * mpq),
               "midi" => (n.pitch && midi(n.pitch)) || nil,
-              "m" => m.index
+              "m" => i
             }
           end
           # a two-staff part lists the left hand after the right; the
@@ -65,15 +87,14 @@ defmodule Dave.NFM.Timeline do
          %{"name" => part.name, "short_name" => part.short_name, "notes" => notes}}
       end)
 
-    {_, first_ms_per_quarter} = elem(clocks, 0)
-
     %{
       "bpm" => score.bpm,
       "beats" => score.beats,
       "beat_type" => score.beat_type,
-      "measure_ms" => round(quarters_per_measure * first_ms_per_quarter),
+      "measure_ms" => round(bar_ms.(0)),
       "duration_ms" => round(duration_ms),
       "measures" => measures,
+      "playback" => Enum.map(playback, fn {i, start} -> %{"m" => i, "start_ms" => round(start)} end),
       "parts" => parts
     }
   end

@@ -81,6 +81,7 @@ export function initKid(pageEl, channel, session) {
       const osmd = await drawScore(osmdEl, `/${slug}/musicxml/${i}`, zoom)
       loadingEl.classList.add("hidden")
       tracker = noteTracker(osmd, part.notes)
+      window.__tracker = tracker // for the headless checks in the scratchpad
     }
 
     // jump straight to wherever the class is
