@@ -53,7 +53,9 @@ Capitals and the hyphen do not matter: `sunnyfox` works too.
 1. Press **Kids join** on the TV. A kid points the iPad camera at the
    code and taps the link, or types the two words into Safari. Or send
    them the **Kids' link** from the song list.
-2. The kid taps their instrument. The bars are big on purpose.
+2. The kid taps their instrument. The bars are big on purpose. Every
+   note shows its letter inside the notehead, in the color you gave it
+   in Noteflight.
 3. That is it. The red line moves when you press play on the TV. There is
    nothing for a kid to press.
 
