@@ -30,7 +30,10 @@ export function initMaster(pageEl, channel) {
   // drawn score and the timeline before it can start walking
   const timelineLoaded = fetch(pageEl.dataset.timelineUrl).then((r) => r.json())
 
-  Promise.all([drawScore(osmdEl, pageEl.dataset.musicxmlUrl, 1.0), timelineLoaded]).then(([osmd, tl]) => {
+  // bigger on a big screen: a 1080p TV at the back of a music room gets 1.4
+  const zoom = Math.min(1.5, Math.max(1.0, window.innerWidth / 1300))
+
+  Promise.all([drawScore(osmdEl, pageEl.dataset.musicxmlUrl, zoom), timelineLoaded]).then(([osmd, tl]) => {
     loadingEl.classList.add("hidden")
     tracker = noteTracker(osmd, mergedOnsets(tl))
     tracker.seekTo(clock.positionMs())
@@ -56,10 +59,20 @@ export function initMaster(pageEl, channel) {
     })
 
   // ---- transport
-  playBtn.addEventListener("click", () => {
-    synth.unlock() // inside the click: Safari will not resume audio later
+  function togglePlay() {
+    synth.unlock() // inside the gesture: Safari will not resume audio later
     if (clock.status === "playing") channel.push("pause", {})
     else channel.push("play", {})
+  }
+  playBtn.addEventListener("click", togglePlay)
+
+  // keyboard, for a laptop driving the TV: space plays/pauses, ← starts
+  // over, m mutes. Ignored while typing or while the tour has the keys.
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, dialog") || document.querySelector(".driver-popover")) return
+    if (e.key === " ") { e.preventDefault(); togglePlay() }
+    if (e.key === "ArrowLeft") { e.preventDefault(); synth.unlock(); channel.push("play", { position_ms: 0 }) }
+    if (e.key === "m") soundBtn.click()
   })
   document.getElementById("btn-pause").addEventListener("click", () => channel.push("pause", {}))
   document.getElementById("btn-restart").addEventListener("click", () => {
@@ -103,7 +116,12 @@ export function initMaster(pageEl, channel) {
     const m = measureAt(pos)
     if (tracker) tracker.seekTo(pos)
     measuresEl.querySelectorAll("button").forEach((b, i) => {
-      b.dataset.current = i === m ? "true" : "false"
+      const current = i === m
+      if (current && b.dataset.current !== "true") {
+        // a long song's strip scrolls sideways; keep the lit measure in view
+        b.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" })
+      }
+      b.dataset.current = current ? "true" : "false"
     })
   })
 
@@ -114,8 +132,16 @@ export function initMaster(pageEl, channel) {
   }
 
   // ---- who is following
+  let online = true
+  document.addEventListener("dave:connection", (e) => {
+    online = e.detail === "online"
+    if (!online) followingText.textContent = "Reconnecting…"
+    liveDot.dataset.live = online ? clock.status : ""
+  })
+
   const presence = new Presence(channel)
   presence.onSync(() => {
+    if (!online) return
     const parts = {}
     let kids = 0
     presence.list((_id, { metas }) => {

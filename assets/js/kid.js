@@ -4,7 +4,7 @@ import { makeClock, onFrame } from "./clock"
 import { drawScore, noteTracker } from "./notation"
 import { makeTour, tourSeen } from "./tour"
 
-export function initKid(pageEl, channel) {
+export function initKid(pageEl, channel, session) {
   const clock = makeClock(channel)
   const scoreId = pageEl.dataset.scoreId
   const osmdEl = document.getElementById("osmd")
@@ -64,6 +64,7 @@ export function initKid(pageEl, channel) {
     partPill.dataset.bar = String(n % 8)
     partPill.classList.remove("hidden")
     changeBtn.classList.remove("hidden")
+    session.part = part.name
     channel.push("part", { name: part.name })
     keepScreenAwake()
 
@@ -72,7 +73,10 @@ export function initKid(pageEl, channel) {
       osmdEl.innerHTML = ""
       tracker = null
       loadingEl.classList.remove("hidden")
-      const osmd = await drawScore(osmdEl, `/s/${scoreId}/musicxml/${i}`, 1.5)
+      // big, but not one-measure-per-line on a portrait iPad (768px -> 1.1,
+      // landscape 1024px -> 1.4, a laptop -> 1.5)
+      const zoom = Math.min(1.5, Math.max(1.1, window.innerWidth / 720))
+      const osmd = await drawScore(osmdEl, `/s/${scoreId}/musicxml/${i}`, zoom)
       loadingEl.classList.add("hidden")
       tracker = noteTracker(osmd, part.notes)
     }
@@ -87,16 +91,23 @@ export function initKid(pageEl, channel) {
     window.scrollTo({ top: 0, behavior: "smooth" })
   })
 
+  let online = true
+
   function renderStatus() {
     const status = picked == null ? "none" : clock.status
-    statusEl.dataset.status = status
-    liveDot.dataset.live = picked == null ? "" : clock.status
-    if (status === "none") statusText.textContent = "Pick an instrument to start"
+    statusEl.dataset.status = online ? status : "offline"
+    liveDot.dataset.live = picked == null || !online ? "" : clock.status
+    if (!online) statusText.textContent = "Reconnecting to the TV…"
+    else if (status === "none") statusText.textContent = "Pick an instrument to start"
     else if (status === "playing") statusText.textContent = "Follow the line"
     else statusText.textContent = "Waiting for your teacher to press play"
   }
 
   clock.onState(renderStatus)
+  document.addEventListener("dave:connection", (e) => {
+    online = e.detail === "online"
+    renderStatus()
+  })
   renderStatus()
 
   onFrame(clock, () => {

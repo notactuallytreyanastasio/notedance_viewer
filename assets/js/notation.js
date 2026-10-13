@@ -18,7 +18,12 @@ export async function drawScore(el, url, zoom) {
     zoom,
   })
   await osmd.load(musicxml)
+  // The constructor's `zoom` option is ignored by OSMD 2.2.1 (osmd.Zoom
+  // stays 1 after construction, measured in headless Chromium); the
+  // setter before render() is what scales the engraving.
+  osmd.Zoom = zoom
   osmd.render()
+  window.__osmd = osmd // for the headless checks in the scratchpad
   osmd.cursor.reset()
   osmd.cursor.show()
   return osmd

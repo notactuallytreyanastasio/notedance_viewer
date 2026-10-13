@@ -48,6 +48,14 @@ defmodule DaveWeb.ScoreController do
     |> send_resp(200, score.music_xml)
   end
 
+  def delete(conn, %{"noteflight_id" => nf_id}) do
+    score = Scores.delete_score!(nf_id)
+
+    conn
+    |> put_flash(:info, "Removed “#{score.title}”. Paste its link again to bring it back.")
+    |> redirect(to: "/")
+  end
+
   def timeline(conn, %{"noteflight_id" => nf_id}) do
     score = Scores.get_score!(nf_id)
 

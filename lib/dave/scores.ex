@@ -10,6 +10,7 @@ defmodule Dave.Scores do
   alias Dave.Scores.{Part, Score}
 
   import Ecto.Query
+  require Logger
 
   defmodule ImportError do
     defexception [:message]
@@ -21,11 +22,50 @@ defmodule Dave.Scores do
   """
   def import_from_url(url) do
     {host, id} = Fetch.parse_url(url)
-    {xml, _meta} = Fetch.fetch(url)
+
+    {xml, _meta} =
+      try do
+        Fetch.fetch({host, id})
+      rescue
+        e ->
+          Logger.warning("noteflight fetch failed for #{host}/#{id}: #{Exception.message(e)}")
+
+          reraise ImportError,
+                  [
+                    message:
+                      "Noteflight did not hand over that score. Check that it is shared " <>
+                        "with anyone who has the link, then try again."
+                  ],
+                  __STACKTRACE__
+      end
+
     import_xml(host, id, xml)
   rescue
+    e in ImportError ->
+      reraise e, __STACKTRACE__
+
     e in ArgumentError ->
-      raise ImportError, Exception.message(e)
+      # Fetch.parse_url (not a score link) or the parser (a notation we have
+      # not met yet, which raises a TODO naming the node). Dave gets a plain
+      # sentence; the node goes to the log so it can be added.
+      Logger.warning("import of #{inspect(url)} failed: #{Exception.message(e)}")
+
+      message =
+        if String.starts_with?(Exception.message(e), "TODO") do
+          "This score uses something DaveDance cannot read yet. " <>
+            "Send Bobby the link and it will get added."
+        else
+          "That is not a Noteflight score link. It should look like " <>
+            "https://your-school.learning.noteflight.com/scores/view/… ."
+        end
+
+      reraise ImportError, [message: message], __STACKTRACE__
+  end
+
+  @doc "Remove a song and its parts. Re-importing the link brings it back."
+  def delete_score!(noteflight_id) do
+    score = get_score!(noteflight_id)
+    Repo.delete!(score)
   end
 
   @example_host "example"

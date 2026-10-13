@@ -60,4 +60,16 @@ defmodule DaveWeb.PageControllerTest do
     assert html =~ ~s|aria-label="Walk me through using this"|
     refute html =~ ~s|id="btn-play"|
   end
+
+  test "DELETE /s/:id takes a song off the list and says how to get it back", %{conn: conn} do
+    Scores.import_example()
+    conn = delete(conn, ~p"/s/mary-had-a-little-lamb")
+    assert redirected_to(conn) == "/"
+    assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Paste its link again"
+    assert Scores.list_scores() == []
+  end
+
+  test "a song that is not there gets the friendly 404", %{conn: conn} do
+    assert_error_sent 404, fn -> get(conn, ~p"/s/not-a-song") end
+  end
 end

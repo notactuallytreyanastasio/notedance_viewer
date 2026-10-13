@@ -457,3 +457,34 @@ body {
 .part-pill { display: inline-block; padding: 4px 14px; border-radius: 999px; background: var(--bar-color, var(--line)); color: var(--ink); font-weight: 600; box-shadow: inset 0 -3px 0 rgba(61, 58, 92, 0.1); }
 .bar:active { animation: boing 260ms ease-out; }
 @keyframes boing { 30% { transform: translateY(4px) scaleX(1.02); } 100% { transform: translateY(0); } }
+
+/* ---------------------------------------------------------------- the pass */
+
+/* phones: the walkthrough button keeps its hand and drops its words */
+@media (max-width: 560px) {
+  .btn-tour { font-size: 0; padding: 0 12px; gap: 0; }
+  .btn-tour::before { font-size: 20px; }
+  .home-top .btn-tour::after { content: "Walk me through"; font-size: 14px; margin-left: 8px; }
+}
+
+/* many instruments wrap into rows instead of scrolling off the edge */
+.bars { flex-wrap: wrap; }
+.bar { flex: 1 1 150px; }
+
+/* a long song's measure strip stays one row and scrolls sideways */
+.measures { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 4px; margin: -4px; flex: 1; min-width: 0; }
+.measures::-webkit-scrollbar { display: none; }
+.measures button { flex: none; }
+.tv-measures { flex-wrap: nowrap; }
+
+/* removing a song is small and quiet, next to the two doors */
+.song-remove { display: inline-flex; }
+.btn-remove { width: 44px; height: 52px; border-radius: var(--radius); border: 2px solid transparent; background: transparent; color: var(--ink-faint); display: inline-flex; align-items: center; justify-content: center; }
+.btn-remove:hover { color: var(--red); background: var(--red-tint); }
+
+/* kid strip while the socket is away */
+.kid-status[data-status="offline"] { color: var(--ink-soft); }
+.kid-status[data-status="offline"] .live-dot { background: var(--bar-0); animation: pulse 1s ease-in-out infinite; }
+
+/* the import button while the fetch runs */
+#btn-import:disabled { opacity: 0.7; cursor: progress; }

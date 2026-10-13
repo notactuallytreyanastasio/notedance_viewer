@@ -21,6 +21,9 @@ after editing the score in Noteflight and it updates in place.
 No link handy? **Load the example song** gives you Mary Had a Little Lamb
 for three xylophones to try everything with.
 
+The small **×** on a song takes it off the list. Pasting the link again
+brings it back.
+
 ## On the TV
 
 From the song list, press **Open on the TV**.
@@ -32,6 +35,9 @@ From the song list, press **Open on the TV**.
 | **Start from measure 1 2 3 …** | Plays from that measure. The iPads jump with you. |
 | 🔊 | Sound on or off. The TV plays a simple xylophone of every part. |
 | **Kids join** | Puts a big QR code on the screen for the iPads. |
+
+On a laptop keyboard: **space** plays and pauses, **←** starts over,
+**m** mutes.
 
 The song stops on its own at the end and winds back to the start.
 
@@ -66,3 +72,10 @@ icon, so kids can open it like an app.
 - Import says it could not read the link? It needs the full
   `…learning.noteflight.com/scores/view/…` address of a score page, not
   a folder or a search.
+- Import says Noteflight did not hand over the score? In Noteflight,
+  share the score with anyone who has the link, then paste it again.
+- Import says the score uses something DaveDance cannot read yet? Send
+  Bobby the link. The reader is strict on purpose and learns one real
+  score at a time.
+- A kid's strip says "Reconnecting to the TV"? The iPad lost wifi. It
+  catches up by itself the moment it is back.

@@ -78,6 +78,23 @@
           <div class="song-actions">
             <a href={"/s/#{score.noteflight_id}/master"} class="btn-primary">Open on the TV</a>
             <a href={"/s/#{score.noteflight_id}"} class="btn-secondary">Kids' link</a>
+            <form
+              action={"/s/#{score.noteflight_id}"}
+              method="post"
+              class="song-remove"
+              data-confirm={"Remove “#{score.title}” from the list? Pasting its link again brings it back."}
+            >
+              <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+              <input type="hidden" name="_method" value="delete" />
+              <button
+                type="submit"
+                class="btn-remove"
+                aria-label={"Remove #{score.title}"}
+                title="Remove"
+              >
+                <.icon name="hero-x-mark" class="size-5" />
+              </button>
+            </form>
           </div>
         </li>
       </ul>

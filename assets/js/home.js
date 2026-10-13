@@ -1,6 +1,20 @@
 import { makeTour } from "./tour"
 
 export function initHome() {
+  // the Noteflight fetch takes a few seconds; say so on the button
+  const form = document.getElementById("import-form")
+  form.addEventListener("submit", () => {
+    const btn = document.getElementById("btn-import")
+    btn.disabled = true
+    btn.textContent = "Importing…"
+  })
+
+  for (const f of document.querySelectorAll("form[data-confirm]")) {
+    f.addEventListener("submit", (e) => {
+      if (!window.confirm(f.dataset.confirm)) e.preventDefault()
+    })
+  }
+
   makeTour("home", [
     {
       element: "#tour-intro",

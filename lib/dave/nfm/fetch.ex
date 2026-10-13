@@ -20,8 +20,13 @@ defmodule Dave.NFM.Fetch do
       => {"mflms-bsdk5.learning.noteflight.com", "eea68d..."}
   """
   def parse_url(url) do
-    case Regex.run(~r|^https?://([^/]+)/scores/view/([0-9a-f]{40})$|i, String.trim(url)) do
-      [_, host, id] -> {host, id}
+    # A pasted address may carry a trailing slash, a query string (?share=…)
+    # or a fragment; the 40-hex id is the only part that matters.
+    case Regex.run(
+           ~r|^https?://([^/?#]+)/scores/view/([0-9a-f]{40})(?:[/?#].*)?$|i,
+           String.trim(url)
+         ) do
+      [_, host, id] -> {host, String.downcase(id)}
       nil -> raise ArgumentError, "not a Noteflight score URL: #{inspect(url)}"
     end
   end

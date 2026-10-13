@@ -26,6 +26,7 @@ defmodule DaveWeb.Router do
     get "/s/:noteflight_id/musicxml", ScoreController, :musicxml
     get "/s/:noteflight_id/musicxml/:part", ScoreController, :musicxml
     get "/s/:noteflight_id/timeline", ScoreController, :timeline
+    delete "/s/:noteflight_id", ScoreController, :delete
   end
 
   # Other scopes may use custom stacks.

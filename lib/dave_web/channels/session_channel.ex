@@ -29,8 +29,11 @@ defmodule DaveWeb.SessionChannel do
 
     role = if params["role"] == "master", do: "master", else: "kid"
     client_id = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+    # the kid page sends its instrument on every join, so a reconnect after a
+    # wifi hiccup does not drop it from the TV's count
+    part = if is_binary(params["part"]), do: params["part"], else: nil
 
-    {:ok, assign(socket, nf_id: nf_id, role: role, client_id: client_id)}
+    {:ok, assign(socket, nf_id: nf_id, role: role, client_id: client_id, part: part)}
   end
 
   @impl true
@@ -40,7 +43,7 @@ defmodule DaveWeb.SessionChannel do
     {:ok, _} =
       Presence.track(socket, socket.assigns.client_id, %{
         role: socket.assigns.role,
-        part: nil
+        part: socket.assigns.part
       })
 
     push(socket, "presence_state", Presence.list(socket))

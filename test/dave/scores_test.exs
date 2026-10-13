@@ -55,9 +55,16 @@ defmodule Dave.ScoresTest do
     assert length(score.parts) == 3
   end
 
-  test "import_from_url rejects non-Noteflight URLs loudly" do
-    assert_raise Dave.Scores.ImportError, ~r/not a Noteflight score URL/, fn ->
-      Scores.import_from_url("https://example.com/scores/view/whatever")
+  test "import_from_url turns a non-score link into a sentence for Dave" do
+    assert_raise Scores.ImportError, ~r/not a Noteflight score link/, fn ->
+      Scores.import_from_url("https://example.com/not-a-score")
     end
+  end
+
+  test "delete_score! removes the song and its parts" do
+    Scores.import_xml(@host, @id, @nfmxml)
+    assert %Score{} = Scores.delete_score!(@id)
+    assert Repo.all(Score) == []
+    assert Repo.all(Part) == []
   end
 end

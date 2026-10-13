@@ -23,11 +23,18 @@ if (pageEl) {
   if (kind === "home") initHome()
 
   if (kind === "kid" || kind === "master") {
+    // join params are read again on every (re)join, so a kid's instrument
+    // survives a wifi hiccup (see DaveWeb.SessionChannel.join/3)
+    const session = { role: kind, part: null }
     const socket = new Socket("/socket")
+    const connection = (state) => document.dispatchEvent(new CustomEvent("dave:connection", { detail: state }))
+    socket.onOpen(() => connection("online"))
+    socket.onClose(() => connection("offline"))
+    socket.onError(() => connection("offline"))
     socket.connect()
-    const channel = socket.channel(`score:${pageEl.dataset.scoreId}`, { role: kind })
+    const channel = socket.channel(`score:${pageEl.dataset.scoreId}`, () => session)
 
-    if (kind === "kid") initKid(pageEl, channel)
+    if (kind === "kid") initKid(pageEl, channel, session)
     if (kind === "master") initMaster(pageEl, channel)
 
     channel.join().receive("error", (e) => console.error("channel join failed", e))

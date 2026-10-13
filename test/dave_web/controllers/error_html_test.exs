@@ -1,14 +1,17 @@
 defmodule DaveWeb.ErrorHTMLTest do
   use DaveWeb.ConnCase, async: true
 
-  # Bring render_to_string/4 for testing custom views
   import Phoenix.Template, only: [render_to_string: 4]
 
-  test "renders 404.html" do
-    assert render_to_string(DaveWeb.ErrorHTML, "404", "html", []) == "Not Found"
+  test "404 is a full page in the house style with a way home" do
+    html = render_to_string(DaveWeb.ErrorHTML, "404", "html", [])
+    assert html =~ "That song is not here."
+    assert html =~ ~s|href="/"|
+    assert html =~ "<!DOCTYPE html>"
   end
 
-  test "renders 500.html" do
-    assert render_to_string(DaveWeb.ErrorHTML, "500", "html", []) == "Internal Server Error"
+  test "500 says it is our fault" do
+    html = render_to_string(DaveWeb.ErrorHTML, "500", "html", [])
+    assert html =~ "Something broke on our side."
   end
 end

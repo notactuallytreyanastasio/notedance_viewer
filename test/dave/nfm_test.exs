@@ -25,6 +25,20 @@ defmodule Dave.NFMTest do
              {"mflms-bsdk5.learning.noteflight.com", "eea68d68d65a761a2d228b73163cee89518a66c4"}
   end
 
+  test "parse_url takes what a browser address bar hands over" do
+    host = "mflms-bsdk5.learning.noteflight.com"
+    id = "eea68d68d65a761a2d228b73163cee89518a66c4"
+
+    for url <- [
+          "https://#{host}/scores/view/#{id}/",
+          "https://#{host}/scores/view/#{id}?share=1&x=y",
+          "https://#{host}/scores/view/#{id}#top",
+          "  https://#{host}/scores/view/#{String.upcase(id)}\n"
+        ] do
+      assert Fetch.parse_url(url) == {host, id}, url
+    end
+  end
+
   test "parse_url rejects non-Noteflight URLs" do
     assert_raise ArgumentError, ~r/not a Noteflight score URL/, fn ->
       Fetch.parse_url("https://example.com/nope")

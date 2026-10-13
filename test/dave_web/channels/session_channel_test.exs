@@ -83,4 +83,17 @@ defmodule DaveWeb.SessionChannelTest do
     metas = presence_metas_until("presence_state", &(&1.role == "master"))
     assert Enum.any?(metas, &(&1.role == "master"))
   end
+
+  test "a rejoin that names the instrument is tracked with it straight away" do
+    {:ok, socket} = connect(DaveWeb.UserSocket, %{}, %{})
+
+    {:ok, _reply, _socket} =
+      subscribe_and_join(socket, DaveWeb.SessionChannel, @topic, %{
+        "role" => "kid",
+        "part" => "Bass Xylophone"
+      })
+
+    metas = presence_metas_until("presence_state", &(&1.part == "Bass Xylophone"))
+    assert Enum.any?(metas, &(&1.part == "Bass Xylophone"))
+  end
 end
