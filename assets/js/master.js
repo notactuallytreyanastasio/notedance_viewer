@@ -50,14 +50,21 @@ export function initMaster(pageEl, channel) {
       // older timeline shape, before a score had a tempo change
       durationMs = tl.duration_ms ?? measures.length * tl.measure_ms
       durationEl.textContent = formatTime(durationMs)
-      for (const m of measures) {
+      // one button per bar PLAYED: a bar that comes round again (a repeat,
+      // a D.S.) gets a second button, marked with its pass, so Dave can
+      // start from the second time through as well as the first
+      const passes = {}
+      for (const step of playbackSteps(tl)) {
+        passes[step.m] = (passes[step.m] || 0) + 1
         const btn = document.createElement("button")
         btn.type = "button"
-        btn.textContent = m.i + 1
-        btn.setAttribute("aria-label", `Start from measure ${m.i + 1}`)
+        btn.textContent = step.m + 1
+        const nth = ["", "", "second", "third", "fourth", "fifth"][passes[step.m]] || `${passes[step.m]}th`
+        if (passes[step.m] > 1) btn.dataset.pass = String(passes[step.m])
+        btn.setAttribute("aria-label", `Start from measure ${step.m + 1}` + (nth ? `, ${nth} time` : ""))
         btn.addEventListener("click", () => {
           synth.unlock()
-          channel.push("play", { position_ms: m.start_ms })
+          channel.push("play", { position_ms: step.start_ms })
         })
         measuresEl.appendChild(btn)
       }
@@ -130,13 +137,19 @@ export function initMaster(pageEl, channel) {
     })
   })
 
+  // the step of the playback being played (its button); with repeats a
+  // bar starts more than once, so this walks the playback order
   function measureAt(pos) {
-    let m = 0
-    // the bar being played: with repeats a bar starts more than once, so
-    // walk the playback order (older timelines have only first starts)
-    const steps = timeline?.playback ?? measures.map((x) => ({ m: x.i, start_ms: x.start_ms }))
-    for (let i = 0; i < steps.length; i++) if (steps[i].start_ms <= pos) m = steps[i].m
-    return m
+    let at = 0
+    if (!timeline) return at
+    const steps = playbackSteps(timeline)
+    for (let i = 0; i < steps.length; i++) if (steps[i].start_ms <= pos) at = i
+    return at
+  }
+
+  // older timelines (before repeats were followed) have only first starts
+  function playbackSteps(tl) {
+    return tl.playback ?? tl.measures.map((x) => ({ m: x.i, start_ms: x.start_ms }))
   }
 
   // ---- who is following

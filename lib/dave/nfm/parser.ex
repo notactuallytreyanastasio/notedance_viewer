@@ -37,6 +37,14 @@ defmodule Dave.NFM.Parser do
   @known_note_children ~w(pitch step noteHead accidental tied explicitAccidental)
   @known_lyric_children ~w(text color direction continued line extend)
   @known_tuplet_children ~w(position units unitValue rhythmUnits rhythmValue showBracket contents)
+  # everything a measure can hold, listed from the seven real scores; an
+  # ending (1st/2nd time), for one, has never been seen and must raise
+  @known_system_measure_children ~w(attributes notations endRepeat startRepeat breakType layoutWeight)
+  @known_part_measure_children ~w(voices attributes notations breakType)
+  @known_system_notations ~w(barline timeSignature tempo segno coda)
+  @known_part_notations ~w(chordSymbol performance)
+  @known_system_attributes ~w(keySignature timeSignature tempo)
+  @known_part_attributes ~w(clef)
 
   def parse(xml) do
     {:ok, doc} = Saxy.SimpleForm.parse_string(xml)
@@ -44,8 +52,10 @@ defmodule Dave.NFM.Parser do
   end
 
   defp parse_score({"noteflightScore", _, children} = doc) do
+    check_structure!(children)
     {beats, beat_type} = time_signature!(children)
-    {fifths, mode} = key_signature!(children)
+    keys = keys!(children)
+    [{0, fifths, mode} | _] = keys
     tempos = tempos!(children)
     [{0, bpm} | _] = tempos
     form = form_marks(children)
@@ -56,6 +66,7 @@ defmodule Dave.NFM.Parser do
       children
       |> all("part")
       |> with_index(&parse_part(&1, &2, measure_beats))
+      |> agree_on_bar_lengths(measure_beats)
 
     %Score{
       title: text!(doc, "title"),
@@ -66,6 +77,7 @@ defmodule Dave.NFM.Parser do
       mode: mode,
       bpm: bpm,
       tempos: tempos,
+      keys: keys,
       parts: parts,
       form: form,
       barlines: barlines(children),
@@ -138,32 +150,72 @@ defmodule Dave.NFM.Parser do
     |> Enum.sort_by(& &1.bar)
   end
 
-  # Time, key and tempo live in <systemPart>'s own staff of measures, not in
-  # the parts. NFMXML duplicates the first measure's tempo into <notations>
-  # too; we read <attributes> only.
-  defp time_signature!(children) do
-    ts =
-      children
-      |> system_measures()
-      |> Enum.flat_map(&all(&1, "attributes"))
-      |> Enum.flat_map(&all(&1, "timeSignature"))
-      |> List.first()
+  # Every measure, attributes and notations child must be one we have met
+  # on a real score. Checked once, up front, so an unknown element names
+  # itself before anything is read around it.
+  defp check_structure!(children) do
+    for {"measure", _, mc} = m <- system_measures(children) do
+      assert_known_children!(m, mc, @known_system_measure_children)
+      for {"notations", _, nc} = n <- all(mc, "notations"), do: assert_known_children!(n, nc, @known_system_notations)
+      for {"attributes", _, ac} = a <- all(mc, "attributes"), do: assert_known_children!(a, ac, @known_system_attributes)
+    end
 
-    unless ts, do: raise(ArgumentError, "no time signature in systemPart")
-    {text_to_int!(ts, "beats"), text_to_int!(ts, "beatType")}
+    for part <- all(children, "part"),
+        staff <- all(part, "staff"),
+        {"measure", _, mc} = m <- all(staff, "measure") do
+      assert_known_children!(m, mc, @known_part_measure_children)
+      for {"notations", _, nc} = n <- all(mc, "notations"), do: assert_known_children!(n, nc, @known_part_notations)
+      for {"attributes", _, ac} = a <- all(mc, "attributes"), do: assert_known_children!(a, ac, @known_part_attributes)
+    end
+
+    :ok
   end
 
-  defp key_signature!(children) do
-    ks =
+  # Time, key and tempo live in <systemPart>'s own staff of measures, not in
+  # the parts. NFMXML duplicates the first measure's tempo into <notations>
+  # too; we read <attributes> only. One time signature for the whole
+  # score: a change mid-piece has not been seen and would move every bar
+  # length after it, so it raises.
+  defp time_signature!(children) do
+    sigs =
       children
       |> system_measures()
-      |> Enum.flat_map(&all(&1, "attributes"))
-      |> Enum.flat_map(&all(&1, "keySignature"))
-      |> List.first()
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {m, bar} ->
+        m
+        |> all("attributes")
+        |> Enum.flat_map(&all(&1, "timeSignature"))
+        |> Enum.map(&{bar, {text_to_int!(&1, "beats"), text_to_int!(&1, "beatType")}})
+      end)
 
-    case ks do
-      nil -> {0, "major"}
-      ks -> {text_to_int!(ks, "fifths"), text(ks, "mode") || "major"}
+    case Enum.uniq_by(sigs, fn {_, sig} -> sig end) do
+      [{1, sig}] -> sig
+      [] -> raise(ArgumentError, "no time signature in systemPart")
+      [_ | [{bar, sig} | _]] -> raise(ArgumentError, "TODO: time signature changes to #{inspect(sig)} at bar #{bar}")
+      [{bar, _}] -> raise(ArgumentError, "TODO: first time signature is at bar #{bar}, not 1")
+    end
+  end
+
+  # Every <keySignature> in a systemPart measure's <attributes>, as
+  # [{measure_index, fifths, mode}]; a repeat of the same key is dropped.
+  # No key at all is C major.
+  defp keys!(children) do
+    keys =
+      children
+      |> system_measures()
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {m, i} ->
+        m
+        |> all("attributes")
+        |> Enum.flat_map(&all(&1, "keySignature"))
+        |> Enum.map(&{i, text_to_int!(&1, "fifths"), text(&1, "mode") || "major"})
+      end)
+      |> Enum.dedup_by(fn {_, fifths, mode} -> {fifths, mode} end)
+
+    case keys do
+      [] -> [{0, 0, "major"}]
+      [{0, _, _} | _] -> keys
+      [{i, _, _} | _] -> raise(ArgumentError, "TODO: first key signature is at measure #{i + 1}, not 1")
     end
   end
 
@@ -220,9 +272,11 @@ defmodule Dave.NFM.Parser do
       staves
       |> Enum.with_index(1)
       |> Enum.flat_map(fn {staff, staff_no} ->
-        staff
-        |> all("measure")
-        |> with_index(&parse_measure(&1, &2, measure_beats))
+        ms = all(staff, "measure")
+        last = length(ms) - 1
+
+        ms
+        |> with_index(&parse_measure(&1, &2, measure_beats, &2 == last))
         |> Enum.map(&%{&1 | staff: staff_no})
         |> carry_clefs()
         |> resolve_ties()
@@ -239,6 +293,45 @@ defmodule Dave.NFM.Parser do
     }
   end
 
+  # A short first or last bar is as long as its notes, and every part and
+  # staff must agree on that length. A part whose bar is only a rest
+  # takes the others' length (a piano's left hand resting through the
+  # pickup); two parts with notes of different lengths in one bar is a
+  # misread and raises.
+  defp agree_on_bar_lengths(parts, measure_beats) do
+    by_index = parts |> Enum.flat_map(& &1.measures) |> Enum.group_by(& &1.index)
+
+    Enum.map(parts, fn part ->
+      measures =
+        Enum.map(part.measures, fn m ->
+          played =
+            by_index
+            |> Map.fetch!(m.index)
+            |> Enum.reject(&match?([%Note{measure_rest: true}], &1.notes))
+            |> Enum.map(& &1.beats)
+            |> Enum.uniq()
+
+          case played do
+            [] ->
+              m
+
+            [beats] ->
+              if match?([%Note{measure_rest: true}], m.notes),
+                do: %{m | beats: beats, notes: Enum.map(m.notes, &%{&1 | beats: beats})},
+                else: m
+
+            many ->
+              raise(
+                ArgumentError,
+                "TODO: bar #{m.index + 1} is #{inspect(Enum.sort(many))} beats long in different parts (of #{measure_beats})"
+              )
+          end
+        end)
+
+      %{part | measures: measures}
+    end)
+  end
+
   defp carry_clefs(measures) do
     {measures, _} =
       Enum.map_reduce(measures, nil, fn m, prev ->
@@ -249,7 +342,7 @@ defmodule Dave.NFM.Parser do
     measures
   end
 
-  defp parse_measure({"measure", _, children}, index, measure_beats) do
+  defp parse_measure({"measure", _, children}, index, measure_beats, last?) do
     clef =
       case attributes_clef(children) do
         nil -> nil
@@ -272,20 +365,25 @@ defmodule Dave.NFM.Parser do
       |> with_index(fn {"voice", _, voice_children}, voice ->
         case voice_notes(voice_children, voice + 1) do
           [] ->
-            [measure_rest(voice + 1, measure_beats)]
+            {[measure_rest(voice + 1, measure_beats)], nil}
 
           notes ->
-            check_positions!(notes, index, measure_beats)
+            check_positions!(notes, index, measure_beats, last?)
         end
       end)
 
+    beats =
+      voices |> Enum.map(fn {_, b} -> b end) |> Enum.reject(&is_nil/1) |> List.first() || measure_beats
+
+    voices = Enum.map(voices, fn {notes, _} -> notes end)
+
     case voices do
       [notes] ->
-        %Measure{index: index, clef: clef, notes: notes, chords: chords}
+        %Measure{index: index, clef: clef, notes: notes, chords: chords, beats: beats}
 
       [notes | rest] ->
         if Enum.all?(rest, &match?([%Note{measure_rest: true}], &1)),
-          do: %Measure{index: index, clef: clef, notes: notes, chords: chords},
+          do: %Measure{index: index, clef: clef, notes: notes, chords: chords, beats: beats},
           else:
             raise(
               ArgumentError,
@@ -399,8 +497,10 @@ defmodule Dave.NFM.Parser do
   # score so far; a gap would mean an implicit rest NFMXML never writes,
   # and we would rather stop than draw a measure short. Tuplet notes land
   # on thirds of a unit (96, 106.67, 117.33), so the comparison allows a
-  # hundredth.
-  defp check_positions!(notes, index, measure_beats) do
+  # hundredth. The first bar may end early (a pickup), and so may the last
+  # (the pickup's complement); any other short or long bar raises.
+  # Returns {notes, beats}: the bar's real length.
+  defp check_positions!(notes, index, measure_beats, last?) do
     unit = NFM.quarter_position()
 
     {_cursor, notes} =
@@ -423,15 +523,13 @@ defmodule Dave.NFM.Parser do
 
     notes = Enum.reverse(notes)
     last_end = List.last(notes) |> then(&(&1.position + &1.beats * unit))
+    short? = last_end < measure_beats * unit - 0.01
 
-    if abs(last_end - measure_beats * unit) > 0.01 do
-      raise(
-        ArgumentError,
-        "TODO: measure #{index + 1} ends at #{last_end}, expected #{measure_beats * unit}"
-      )
+    cond do
+      abs(last_end - measure_beats * unit) <= 0.01 -> {notes, measure_beats}
+      short? and (index == 0 or last?) -> {notes, last_end / unit}
+      true -> raise(ArgumentError, "TODO: measure #{index + 1} ends at #{last_end}, expected #{measure_beats * unit}")
     end
-
-    notes
   end
 
   # The clef's <note> names the pitch the sign marks (G4 for treble), and

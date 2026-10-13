@@ -77,7 +77,11 @@ export function initKid(pageEl, channel, session) {
       // Big enough that a one-space disc with a letter in it reads from a
       // lap: a staff space is 10px at zoom 1, so this is 17-24px. A
       // portrait iPad (768px) gets 1.7, landscape (1024px) 2.1, a laptop 2.4.
-      const zoom = Math.min(2.4, Math.max(1.7, window.innerWidth / 480))
+      let zoom = Math.min(2.4, Math.max(1.7, window.innerWidth / 480))
+      // a piano's two staves, or a line with lyrics under it, need more
+      // room per bar: a portrait iPad fit one bar of Nine to Five's piano
+      // per line at full size, and its syllables touched
+      if (part.staves > 1 || part.lyrics) zoom *= 0.8
       const osmd = await drawScore(osmdEl, `/${slug}/musicxml/${i}`, zoom)
       loadingEl.classList.add("hidden")
       tracker = noteTracker(osmd, part.notes)

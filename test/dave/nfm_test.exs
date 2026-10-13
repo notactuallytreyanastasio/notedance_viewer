@@ -330,6 +330,102 @@ defmodule Dave.NFMTest do
     assert MusicXML.to_music_xml(score, [0]) =~ ~s|<repeat direction="backward"/>|
   end
 
+  # Mary's systemPart bar 5, to hang a change on
+  defp with_system_bar_5(xml, inject) do
+    sp = Regex.run(~r|<systemPart>.*?</systemPart>|s, xml) |> hd()
+    # bars 2..8 are identical text, so rebuild the systemPart by position
+    [before | rest] = String.split(sp, "<measure>")
+    bars = Enum.map(rest, &("<measure>" <> &1))
+    new_sp = before <> Enum.join(List.update_at(bars, 4, inject))
+    String.replace(xml, sp, new_sp, global: false)
+  end
+
+  test "a key change mid-song is read and written at its bar" do
+    changed =
+      with_system_bar_5(@nfmxml, fn bar ->
+        String.replace(bar, "<attributes/>", "<attributes><keySignature><fifths>2</fifths><mode>major</mode></keySignature></attributes>", global: false)
+      end)
+
+    score = Parser.parse(changed)
+    assert score.keys == [{0, 0, "major"}, {4, 2, "major"}]
+    assert score.fifths == 0
+
+    musicxml = MusicXML.to_music_xml(score, [0])
+    assert musicxml =~ ~s|<measure number="5"><attributes><key><fifths>2</fifths></key></attributes>|
+    assert length(String.split(musicxml, "<key>")) - 1 == 2
+  end
+
+  test "a time signature change, or an element never seen (an ending), is refused by name" do
+    changed =
+      with_system_bar_5(@nfmxml, fn bar ->
+        String.replace(bar, "<attributes/>", "<attributes><timeSignature><beats>3</beats><beatType>4</beatType></timeSignature></attributes>", global: false)
+      end)
+
+    assert_raise ArgumentError, ~r/TODO: time signature changes to \{3, 4\} at bar 5/, fn -> Parser.parse(changed) end
+
+    with_ending = with_system_bar_5(@nfmxml, fn bar -> String.replace(bar, "<measure>", "<measure><ending><number>1</number></ending>", global: false) end)
+    assert_raise ArgumentError, ~r/TODO: <ending> not handled yet/, fn -> Parser.parse(with_ending) end
+  end
+
+  # Mary with every part's bar 1 cut to its last quarter note: a one-beat pickup
+  defp with_pickup(xml, parts_to_cut \\ :all) do
+    [head | parts] = String.split(xml, "<part>")
+
+    parts =
+      parts
+      |> Enum.with_index()
+      |> Enum.map(fn {p, i} ->
+        if parts_to_cut == :all or i in parts_to_cut do
+          [{start, len}] = Regex.run(~r|<voices>.*?</voices>|s, p, return: :index)
+          voices = binary_part(p, start, len)
+          sets = Regex.scan(~r|<noteSet>.*?</noteSet>|s, voices) |> Enum.map(&hd/1)
+          assert length(sets) == 4
+          keep = sets |> List.last() |> String.replace(~r|<position>\d+</position>|, "")
+          String.replace(p, voices, "<voices><voice>#{keep}</voice></voices>", global: false)
+        else
+          p
+        end
+      end)
+
+    Enum.join([head | parts], "<part>")
+  end
+
+  test "a short first bar is a pickup: as long as its notes, implicit on the page, short on the clock" do
+    score = Parser.parse(with_pickup(@nfmxml))
+    for part <- score.parts, do: assert(hd(part.measures).beats == 1.0)
+    assert Enum.at(hd(score.parts).measures, 1).beats == 4.0
+
+    tl = Timeline.build(score)
+    assert Enum.at(tl["measures"], 1)["start_ms"] == 667
+    assert tl["duration_ms"] == round(60_000 / 90 * (1 + 7 * 4))
+    assert hd(tl["parts"]["0"]["notes"])["ms"] == 0
+    assert Enum.at(tl["parts"]["0"]["notes"], 1)["ms"] == 667
+
+    musicxml = MusicXML.to_music_xml(score, [0])
+    assert musicxml =~ ~s|<measure number="1" implicit="yes">|
+    refute musicxml =~ ~s|<measure number="2" implicit|
+    assert {:ok, _} = Saxy.SimpleForm.parse_string(musicxml)
+  end
+
+  test "a bar that is short in one part and full in another is refused" do
+    assert_raise ArgumentError, ~r/TODO: bar 1 is \[1.0, 4.0\] beats long in different parts/, fn ->
+      Parser.parse(with_pickup(@nfmxml, [0]))
+    end
+  end
+
+  test "a bar short anywhere but first or last is refused" do
+    broken = String.replace(@nfmxml, "<position>192</position>", "<position>128</position>", global: false)
+    assert_raise ArgumentError, ~r/TODO: measure 1 note at position 128/, fn -> Parser.parse(broken) end
+  end
+
+  test "timeline parts say whether they have two staves or lyrics, for the kid page's zoom" do
+    tl = Timeline.build(Parser.parse(@nine_to_five))
+    assert tl["parts"]["0"]["lyrics"] == true and tl["parts"]["0"]["staves"] == 1
+    assert tl["parts"]["1"]["lyrics"] == false and tl["parts"]["1"]["staves"] == 2
+    mary = Timeline.build(Parser.parse(@nfmxml))
+    assert mary["parts"]["0"]["lyrics"] == false and mary["parts"]["0"]["staves"] == 1
+  end
+
   test "pitch: the written octave crosses the B/C seam, and a wrong mark raises" do
     note = fn pitch, step, acc ->
       "<noteSet><value>6</value><note><pitch>#{pitch}</pitch><step>#{step}</step>#{acc}</note></noteSet>"

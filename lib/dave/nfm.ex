@@ -29,6 +29,10 @@ defmodule Dave.NFM do
       like an empty `<voice/>`.
     * `<hidden/>` on a part (Nine to Five's Voice) is kept and noted, not
       dropped: it holds the melody and every lyric.
+    * Every element a measure, its `<attributes>` and its `<notations>`
+      can hold has been listed from the seven real scores; anything else
+      (an ending, say) raises, so a form the reader cannot follow is
+      refused instead of played wrong.
     * Repeat barlines, segno and coda live in the systemPart's measures;
       the texts that drive them ("To Coda", "D.S. al Coda") are
       `<performance>` notations in a part's measures. `Score.form` lists
@@ -66,6 +70,8 @@ defmodule Dave.NFM do
       :parts,
       # [{measure_index, quarter_bpm}], first entry at measure 0; bpm is its bpm
       tempos: [],
+      # [{measure_index, fifths, mode}], first entry at measure 0; fifths/mode are its
+      keys: [],
       # [%{bar: 31, kind: :start_repeat}, ...], 1-based bars; see Dave.NFM.Form
       form: [],
       # %{bar => "double" | "final"}: Noteflight's barline kinds, from the
@@ -84,8 +90,11 @@ defmodule Dave.NFM do
 
   defmodule Measure do
     @enforce_keys [:index, :clef, :notes]
-    defstruct [:index, :clef, :notes, staff: 1, chords: []]
+    defstruct [:index, :clef, :notes, staff: 1, chords: [], beats: nil]
     # chords: [%{position: 0, chord: Dave.NFM.Chord.parse/1 result}]
+    # beats: the bar's real length in quarter notes: the time signature's,
+    #   except a short first bar (a pickup) or a short last bar (its
+    #   complement), whose length is what its notes add up to
   end
 
   defmodule Note do

@@ -86,7 +86,7 @@ icon, so kids can open it like an app.
 - Import says the song has a repeat, a segno or a coda? The line and
   the clock follow them: Twinkle plays through twice, Nine to Five goes
   back to the segno after bar 30, jumps to the coda after bar 12 and
-  plays the coda's repeat. The "Start from measure" buttons start a
-  bar's first time through.
+  plays the coda's repeat. A bar that comes round again has a second
+  "Start from measure" button with a small 2 in its corner.
 - A kid's strip says "Reconnecting to the TV"? The iPad lost wifi. It
   catches up by itself the moment it is back.

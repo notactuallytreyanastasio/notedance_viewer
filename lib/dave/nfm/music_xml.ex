@@ -102,22 +102,27 @@ defmodule Dave.NFM.MusicXML do
         staff_measures = Enum.sort_by(staff_measures, & &1.staff)
         clefs = Enum.map(staff_measures, &clef_xml(&1, part))
 
+        key_change = key_change_xml(score, index)
+
         attrs =
           cond do
             index == 0 ->
               [first_attributes_xml(score, part, clefs)]
 
-            clefs != prev_clefs ->
+            clefs != prev_clefs or key_change != [] ->
               changed =
                 Enum.zip(clefs, prev_clefs)
                 |> Enum.reject(fn {c, p} -> c == p end)
                 |> Enum.map(fn {c, _} -> c end)
 
-              [{"attributes", [], changed}]
+              [{"attributes", [], key_change ++ changed}]
 
             true ->
               []
           end
+
+        [first | _] = staff_measures
+        short? = first.beats != nil and first.beats < score.beats * 4 / score.beat_type
 
         marks = if(part_index == 0, do: Enum.filter(score.form, &(&1.bar == index + 1)), else: [])
         direction = direction_xml(score, index, part_index) |> List.wrap()
@@ -125,7 +130,7 @@ defmodule Dave.NFM.MusicXML do
         notes =
           staff_measures
           |> Enum.map(fn m -> notes_with_harmony(m, part) end)
-          |> Enum.intersperse([backup_xml(score)])
+          |> Enum.intersperse([backup_xml(score, first.beats)])
           |> List.flatten()
 
         content =
@@ -135,7 +140,9 @@ defmodule Dave.NFM.MusicXML do
             sign_directions(marks) ++
             notes ++ jump_directions(marks) ++ right_barline(marks, score.barlines[index + 1])
 
-        {{"measure", [{"number", Integer.to_string(index + 1)}], content}, clefs}
+        # a pickup bar is "implicit": numbered but not counted by OSMD
+        number = [{"number", Integer.to_string(index + 1)}] ++ if(short?, do: [{"implicit", "yes"}], else: [])
+        {{"measure", number, content}, clefs}
       end)
 
     measures
@@ -255,12 +262,24 @@ defmodule Dave.NFM.MusicXML do
       {"direction", [{"placement", "above"}],
        [{"direction-type", [], [type]}, {"sound", sound_attrs, []}]}
 
-  defp backup_xml(%Score{} = score) do
-    {"backup", [], [{"duration", [], [Integer.to_string(measure_divisions(score))]}]}
+  defp backup_xml(%Score{} = score, beats) do
+    {"backup", [], [{"duration", [], [Integer.to_string(measure_divisions(score, beats))]}]}
   end
 
-  defp measure_divisions(%Score{beats: beats, beat_type: beat_type}),
+  defp measure_divisions(%Score{beats: beats, beat_type: beat_type}, nil),
     do: round(@divisions * beats * 4 / beat_type)
+
+  defp measure_divisions(_score, beats), do: round(@divisions * beats)
+
+  # a key change (Score.keys) goes in every part's attributes at that bar
+  defp key_change_xml(%Score{keys: keys}, index) when index > 0 do
+    case List.keyfind(keys, index, 0) do
+      {^index, fifths, _mode} -> [{"key", [], [{"fifths", [], [Integer.to_string(fifths)]}]}]
+      nil -> []
+    end
+  end
+
+  defp key_change_xml(_score, _index), do: []
 
   defp first_attributes_xml(%Score{} = score, %Part{staves: staves}, clefs) do
     {"attributes", [],

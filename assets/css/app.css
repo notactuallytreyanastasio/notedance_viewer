@@ -305,6 +305,12 @@ button { cursor: pointer; touch-action: manipulation; }
 }
 .measures button:hover { border-color: #8fa0e6; background: var(--blue-tint); }
 .measures button[data-current="true"] { background: var(--bar-0); border-color: var(--bar-0); color: var(--ink); }
+/* a bar's second time through (after a repeat or a D.S.): the pass, small, top right */
+.measures button[data-pass] { position: relative; }
+.measures button[data-pass]::after {
+  content: attr(data-pass); position: absolute; top: 2px; right: 4px;
+  font-size: 10px; line-height: 1; color: var(--ink-soft);
+}
 
 .progress { height: 4px; background: var(--line); }
 .progress-bar { height: 100%; width: 0; background: var(--red); transition: width 120ms linear; }

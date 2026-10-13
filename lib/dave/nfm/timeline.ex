@@ -32,8 +32,15 @@ defmodule Dave.NFM.Timeline do
       |> Enum.max()
       |> Kernel.+(1)
 
+    # a bar's real length: a pickup or its complement is shorter than the
+    # time signature says (every part agrees; the parser checked)
+    bar_beats =
+      score.parts
+      |> Enum.flat_map(& &1.measures)
+      |> Enum.reduce(%{}, fn m, acc -> Map.put_new(acc, m.index, m.beats || quarters_per_measure) end)
+
     ms_per_quarter = fn i -> 60_000.0 / tempo_at(score, i) end
-    bar_ms = fn i -> quarters_per_measure * ms_per_quarter.(i) end
+    bar_ms = fn i -> Map.get(bar_beats, i, quarters_per_measure) * ms_per_quarter.(i) end
 
     # a straight read-through: where each bar sits on the page's own clock
     {linear_starts, _} =
@@ -84,7 +91,14 @@ defmodule Dave.NFM.Timeline do
           |> Enum.sort_by(&{&1["ms"], &1["m"]})
 
         {Integer.to_string(idx),
-         %{"name" => part.name, "short_name" => part.short_name, "notes" => notes}}
+         %{
+           "name" => part.name,
+           "short_name" => part.short_name,
+           # the kid page draws a two-staff part, or one with lyrics, smaller
+           "staves" => part.staves,
+           "lyrics" => Enum.any?(part.measures, fn m -> Enum.any?(m.notes, &(&1.lyrics != [])) end),
+           "notes" => notes
+         }}
       end)
 
     %{
