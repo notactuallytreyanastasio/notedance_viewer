@@ -14,7 +14,9 @@ set -euo pipefail
 #   ./deploy.sh --no-test  deploy without running the suite (say why)
 #   ./deploy.sh --host user@host
 
-HOST="${DEPLOY_HOST:-root@deploy-host}"
+# The box is behind Cloudflare; its address is not written here. Set
+# DEPLOY_HOST=user@host (or pass --host) before running.
+HOST="${DEPLOY_HOST:-}"
 APP_DIR="/opt/dave"
 STACK_DIR="/opt/blog"
 URL="https://dave.bobbby.online"
@@ -30,6 +32,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ -z "$HOST" ]; then
+  echo "deploy.sh: set DEPLOY_HOST=user@host or pass --host user@host" >&2
+  exit 1
+fi
 
 bold() { printf '\033[1m==>\033[0m %s\n' "$1"; }
 did()  { printf '    \033[32m✓\033[0m %s\n' "$1"; }
