@@ -24,25 +24,29 @@ export async function drawScore(el, url, zoom) {
   return osmd
 }
 
-// Advance the OSMD cursor to the next timeline note at or before `ms`.
-// `notes` are the part's notes in document order — the same order OSMD's
-// cursor walks them for a single-voice part. Scrolls only when the cursor
-// actually moved, so a paused page stays still.
-export function noteTracker(osmd, notes) {
-  let idx = 0
-  let currentIdx = -1
+// Advance the OSMD cursor to the latest onset at or before `ms`.
+// `onsets` are {ms} in document order: a part's notes for the kid page, or
+// every distinct onset across all parts for the TV, which is the order
+// OSMD's cursor walks the score (cursor.next() steps to the next distinct
+// timestamp across every staff). After reset() the cursor is already ON
+// the first onset, so the walk starts at 0, not before it; starting at -1
+// put the line on the second note at time zero.
+export function noteTracker(osmd, onsets) {
+  let idx = 0 // onsets[idx] is the first onset still in the future
+  let at = 0 // the onset the cursor is on
 
   function seekTo(ms) {
-    if (idx > 0 && ms < notes[idx - 1].ms) {
+    if (idx > 0 && ms < onsets[idx - 1].ms) {
       osmd.cursor.reset()
       idx = 0
-      currentIdx = -1
+      at = 0
     }
-    while (idx < notes.length && notes[idx].ms <= ms) idx++
+    while (idx < onsets.length && onsets[idx].ms <= ms) idx++
+    const target = Math.max(0, idx - 1)
     let moved = false
-    while (currentIdx < idx - 1) {
+    while (at < target) {
       osmd.cursor.next()
-      currentIdx++
+      at++
       moved = true
     }
     if (moved) keepCursorVisible()
@@ -51,19 +55,13 @@ export function noteTracker(osmd, notes) {
   return { seekTo }
 }
 
-// Measure-level cursor for the TV: jump to the start of measure m.
-export function measureTracker(osmd) {
-  let current = -1
-
-  function seekToMeasure(m) {
-    if (m === current) return
-    osmd.cursor.reset()
-    for (let i = 0; i < m; i++) osmd.cursor.nextMeasure()
-    current = m
-    keepCursorVisible()
+// Every distinct onset across all parts, sorted: the TV's walk order.
+export function mergedOnsets(timeline) {
+  const seen = new Set()
+  for (const key of Object.keys(timeline.parts)) {
+    for (const n of timeline.parts[key].notes) seen.add(n.ms)
   }
-
-  return { seekToMeasure }
+  return [...seen].sort((a, b) => a - b).map((ms) => ({ ms }))
 }
 
 function keepCursorVisible() {

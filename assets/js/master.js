@@ -3,7 +3,7 @@
 import { Presence } from "phoenix"
 import QRCode from "qrcode"
 import { makeClock, onFrame, formatTime } from "./clock"
-import { drawScore, measureTracker } from "./notation"
+import { drawScore, noteTracker, mergedOnsets } from "./notation"
 import { makeSynth } from "./synth"
 import { makeTour } from "./tour"
 
@@ -26,14 +26,17 @@ export function initMaster(pageEl, channel) {
   let measures = []
   let durationMs = 0
 
-  drawScore(osmdEl, pageEl.dataset.musicxmlUrl, 1.0).then((osmd) => {
+  // the line steps note by note across all parts, so it needs both the
+  // drawn score and the timeline before it can start walking
+  const timelineLoaded = fetch(pageEl.dataset.timelineUrl).then((r) => r.json())
+
+  Promise.all([drawScore(osmdEl, pageEl.dataset.musicxmlUrl, 1.0), timelineLoaded]).then(([osmd, tl]) => {
     loadingEl.classList.add("hidden")
-    tracker = measureTracker(osmd)
-    tracker.seekToMeasure(measureAt(clock.positionMs()))
+    tracker = noteTracker(osmd, mergedOnsets(tl))
+    tracker.seekTo(clock.positionMs())
   })
 
-  fetch(pageEl.dataset.timelineUrl)
-    .then((r) => r.json())
+  timelineLoaded
     .then((tl) => {
       timeline = tl
       measures = tl.measures
@@ -98,7 +101,7 @@ export function initMaster(pageEl, channel) {
     positionEl.textContent = formatTime(pos)
     if (durationMs) progressEl.style.width = `${Math.min(100, (pos / durationMs) * 100)}%`
     const m = measureAt(pos)
-    if (tracker) tracker.seekToMeasure(m)
+    if (tracker) tracker.seekTo(pos)
     measuresEl.querySelectorAll("button").forEach((b, i) => {
       b.dataset.current = i === m ? "true" : "false"
     })
