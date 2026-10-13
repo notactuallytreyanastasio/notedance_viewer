@@ -63,29 +63,45 @@ defmodule Dave.NFM.MusicXML do
     end)
   end
 
+  # NFMXML repeats the clef in every measure's <attributes>. MusicXML reads an
+  # <attributes> as a change, and OSMD engraves a fresh clef and time
+  # signature wherever it finds one, so copying NFMXML's habit put a treble
+  # clef and a 4/4 at the start of every bar. Here: everything in measure 1,
+  # after that only a clef, and only when it differs from the bar before.
   defp measures_xml(%Score{} = score, %Part{} = part, part_index) do
-    Enum.map(part.measures, fn %Measure{} = m ->
-      attrs = attributes_xml(score, part, m, part_index) |> Enum.reject(&(&1 == []))
-      notes = Enum.map(m.notes, &note_xml/1)
-      {"measure", [{"number", Integer.to_string(m.index + 1)}], attrs ++ notes}
-    end)
+    {measures, _prev_clef} =
+      Enum.map_reduce(part.measures, nil, fn %Measure{} = m, prev_clef ->
+        clef = clef_xml(m, part)
+
+        attrs =
+          cond do
+            m.index == 0 -> [first_attributes_xml(score, clef)]
+            clef != prev_clef -> [{"attributes", [], [clef]}]
+            true -> []
+          end
+
+        direction = direction_xml(score, m, part_index) |> List.wrap()
+        notes = Enum.map(m.notes, &note_xml/1)
+
+        {{"measure", [{"number", Integer.to_string(m.index + 1)}], attrs ++ direction ++ notes},
+         clef}
+      end)
+
+    measures
   end
 
-  defp attributes_xml(%Score{} = score, %Part{} = part, %Measure{} = m, part_index) do
-    [
-      {"attributes", [],
-       [
-         {"divisions", [], [Integer.to_string(@divisions)]},
-         {"key", [], [{"fifths", [], [Integer.to_string(score.fifths)]}]},
-         {"time", [],
-          [
-            {"beats", [], [Integer.to_string(score.beats)]},
-            {"beat-type", [], [Integer.to_string(score.beat_type)]}
-          ]},
-         clef_xml(m, part)
-       ]},
-      direction_xml(score, m, part_index)
-    ]
+  defp first_attributes_xml(%Score{} = score, clef) do
+    {"attributes", [],
+     [
+       {"divisions", [], [Integer.to_string(@divisions)]},
+       {"key", [], [{"fifths", [], [Integer.to_string(score.fifths)]}]},
+       {"time", [],
+        [
+          {"beats", [], [Integer.to_string(score.beats)]},
+          {"beat-type", [], [Integer.to_string(score.beat_type)]}
+        ]},
+       clef
+     ]}
   end
 
   defp clef_xml(%Measure{clef: nil}, %Part{}) do

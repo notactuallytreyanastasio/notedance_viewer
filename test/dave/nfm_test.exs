@@ -115,6 +115,15 @@ defmodule Dave.NFMTest do
     refute musicxml =~ "<part-name>Soprano Xylophone</part-name>"
   end
 
+  test "musicxml: clef and time signature are written once, not per measure" do
+    musicxml = MusicXML.to_music_xml(Parser.parse(@nfmxml), [0])
+
+    # one part, 8 measures of the same treble clef: a single <attributes>
+    assert length(String.split(musicxml, "<attributes>")) - 1 == 1
+    assert length(String.split(musicxml, "<clef>")) - 1 == 1
+    assert length(String.split(musicxml, "<time>")) - 1 == 1
+  end
+
   test "musicxml: quarter is 48 divisions, half is 96, rests render" do
     musicxml = MusicXML.to_music_xml(Parser.parse(@nfmxml))
 
