@@ -8,6 +8,12 @@ defmodule DaveWeb.Layouts do
 
   embed_templates "layouts/*"
 
+  @default_description "Put a song on the TV and hand the kids the link. " <>
+                         "Every iPad in the classroom follows the line while the teacher presses play."
+
+  @doc "The tagline used wherever a page does not set its own description."
+  def default_description, do: @default_description
+
   attr :flash, :map, required: true, doc: "the map of flash messages"
   slot :inner_block, required: true
 

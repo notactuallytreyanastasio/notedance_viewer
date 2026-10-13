@@ -6,7 +6,31 @@
     <meta name="csrf-token" content={get_csrf_token()} />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#f6f3fc" />
-    <.live_title default="dave" suffix=" · dave" phx-no-format>{assigns[:page_title]}</.live_title>
+    <.live_title default="DaveDance" suffix=" · DaveDance" phx-no-format>{assigns[:page_title]}</.live_title>
+    <meta
+      name="description"
+      content={assigns[:page_description] || DaveWeb.Layouts.default_description()}
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DaveDance" />
+    <meta
+      property="og:title"
+      content={if assigns[:page_title], do: "#{@page_title} · DaveDance", else: "DaveDance"}
+    />
+    <meta
+      property="og:description"
+      content={assigns[:page_description] || DaveWeb.Layouts.default_description()}
+    />
+    <meta property="og:image" content={url(~p"/images/og.png")} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="DaveDance: a pastel xylophone with a mallet. Put a song on the TV. Hand the kids the link."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href={~p"/images/favicon.svg"} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>

@@ -1,4 +1,4 @@
-// dave — classroom music viewer.
+// DaveDance — classroom music viewer.
 //
 // Three pages, one script:
 //   home   (Dave's laptop): import a song, open the TV, copy the kids' link

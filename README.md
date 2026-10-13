@@ -1,4 +1,8 @@
-# Dave
+# DaveDance
+
+Put a song on the TV. Hand the kids the link. A classroom music viewer
+for Noteflight Learning scores: the TV runs the clock, every iPad in the
+room follows the line. Live at https://dave.bobbby.online.
 
 To start your Phoenix server:
 

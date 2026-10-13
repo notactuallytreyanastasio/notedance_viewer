@@ -196,6 +196,7 @@ button { cursor: pointer; touch-action: manipulation; }
   display: inline-flex; align-items: center; gap: 10px;
   font-weight: 600; font-size: 24px; color: var(--ink); text-decoration: none;
 }
+.brand b { font-weight: 600; color: #8fa0e6; }
 .brand-bars { display: inline-flex; align-items: flex-end; gap: 3px; height: 26px; }
 .brand-bars i { display: block; width: 7px; border-radius: 3px; }
 .brand-bars i:nth-child(1) { height: 26px; background: var(--bar-0); }

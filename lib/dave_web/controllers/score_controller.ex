@@ -10,6 +10,10 @@ defmodule DaveWeb.ScoreController do
     conn
     |> assign(:score, score)
     |> assign(:page_title, score.title)
+    |> assign(
+      :page_description,
+      "Tap your instrument and follow the line. #{score.title} on DaveDance."
+    )
     |> render(:play)
   end
 
@@ -20,6 +24,10 @@ defmodule DaveWeb.ScoreController do
     conn
     |> assign(:score, score)
     |> assign(:page_title, "#{score.title} on the TV")
+    |> assign(
+      :page_description,
+      "The TV view: play, pause, start from any measure. #{score.title} on DaveDance."
+    )
     |> render(:master)
   end
 

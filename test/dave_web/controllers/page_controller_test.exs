@@ -12,7 +12,10 @@ defmodule DaveWeb.PageControllerTest do
     assert html =~ "Walk me through using this"
     assert html =~ "No songs yet"
     assert html =~ "<title"
-    assert html =~ "Songs · dave"
+    assert html =~ "Songs · DaveDance"
+    assert html =~ ~s|property="og:title" content="Songs · DaveDance"|
+    assert html =~ ~r|property="og:image" content="http://localhost:\d+/images/og.png"|
+    assert html =~ ~s|rel="icon" href="/images/favicon.svg"|
   end
 
   test "GET / with songs: both doors per song, no example button", %{conn: conn} do
